@@ -533,6 +533,9 @@ function renderStats(){
   const years=[...new Set(evList().map(e=>e.date.slice(0,4)))];const year=ui.year&&years.includes(ui.year)?ui.year:years[years.length-1]||String(new Date().getFullYear());
   ui._statYear=year;
   const {E,A,penSum,nights}=statsData(year);const L=ledger();
+  const DON={};for(const p of Object.values(pays)){if(!(p.date||'').startsWith(year)||!(p.donation>0.004))continue;const d=DON[p.pid]??={pid:p.pid,name:p.name,sum:0,n:0};d.sum+=p.donation;d.n++;if(A[p.pid])d.name=A[p.pid].name}
+  for(const d of Object.values(DON))if(A[d.pid])A[d.pid].don=d.sum;
+  const donList=Object.values(DON).sort((a,b)=>b.sum-a.sum);const donTot=donList.reduce((s,d)=>s+d.sum,0);
   const arr=Object.values(A);const mem=arr.filter(a=>!a.guest);
   const total=arr.reduce((s,a)=>s+a.total,0);
   const pudel=arr.reduce((s,a)=>s+(a.c.pudel||0),0);
@@ -553,6 +556,7 @@ function renderStats(){
     ${rec('Teuerster Abend',a=>a.max,(a)=>`${eur(a.max)} am ${dshort(a.maxDate)}`,arr)}
     ${rec('Treueste Anwesenheit',a=>a.pres,(a)=>`${a.pres} von ${E.length} Abenden`)}
     ${rec('Glöckchen-Meister',a=>a.c.glocke||0,(a)=>`${a.c.glocke||0} Glöckchen`,arr)}
+    ${donList[0]?`<div class="rec"><div class="l">Größter Spender</div><div class="n">${esc(donList[0].name)}</div><div class="muted small num">${eur(donList[0].sum)} in ${donList[0].n} Zahlung${donList[0].n===1?'':'en'}</div></div>`:''}
     ${rec('Pudelmedaille am häufigsten',a=>a.medal||0,(a)=>`${a.medal}× mitgenommen`)}
     ${rec('Siegerpin am häufigsten',a=>a.pin||0,(a)=>`${a.pin}× mitgenommen`)}
     ${rec('Mitgliedskegel vergessen',a=>a.c.mk||0,(a)=>`${a.c.mk||0}×`)}
@@ -561,6 +565,10 @@ function renderStats(){
    <div class="card"><h2>Strafen je Person</h2><div class="legend" style="margin:6px 0"><span><i style="background:var(--accent)"></i>selbst erkegelt</span><span><i style="background:var(--bar2)"></i>Ø bei Abwesenheit</span></div><div class="chartbox" style="height:340px"><canvas id="chPers" role="img" aria-label="Strafen je Person"></canvas></div></div>
    <div class="card"><h2>Strafen nach Art</h2><div class="chartbox" style="height:370px"><canvas id="chPen" role="img" aria-label="Strafen nach Art in Euro"></canvas></div></div>
   </div>
+  <div class="card"><div class="row" style="margin-bottom:8px"><h2>Spenden je Person</h2><span class="spacer"></span><span class="muted num">Gesamt ${year}: <b>${eur(donTot)}</b></span></div>
+  ${donList.length?`<div class="tbl-wrap"><table><thead><tr><th class="r">#</th><th>Name</th><th class="r">Spenden</th><th class="r">Anzahl</th><th class="r">Ø je Spende</th><th class="r">Anteil</th></tr></thead><tbody>
+  ${donList.map((d,i)=>`<tr><td class="r num">${i+1}</td><td><b>${esc(d.name)}</b></td><td class="r num"><b>${eur(d.sum)}</b></td><td class="r num">${d.n}</td><td class="r num">${eur(d.sum/d.n)}</td><td class="r num">${donTot?Math.round(d.sum/donTot*100):0} %</td></tr>`).join('')}
+  </tbody></table></div><p class="muted small">Spende = Betrag, der beim Bezahlen über die offenen Strafen hinaus gegeben und als Spende verbucht wurde.</p>`:'<p class="muted">Noch keine Spenden in diesem Jahr.</p>'}</div>
   ${(()=>{const pl=arr.filter(a=>a.pres>0).map(a=>({...a,pp:(a.c.pudel||0)/a.pres})).sort((a,b)=>a.pp-b.pp);
     const tot=pl.reduce((s,a)=>s+(a.c.pudel||0),0),tp=pl.reduce((s,a)=>s+a.pres,0);
     ui._pudel=pl;
@@ -570,8 +578,8 @@ function renderStats(){
     ${pl.map((a,i)=>`<tr><td class="r num">${i+1}</td><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}</td><td class="r num">${a.c.pudel||0}</td><td class="r num"><b>${a.pp.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></td><td class="r num">${a.pmin??'–'}</td><td class="r num">${a.pmax??'–'}</td></tr>`).join('')}
     </tbody></table><p class="muted small">Nur Abende, an denen die Person anwesend war. Rang 1 = wenigste Pudel pro Abend. Bester/Schlechtester = wenigste/meiste Pudel an einem Abend.</p></div></div></div>`})()}
   <div class="card"><h2>Summe je Abend</h2><div class="chartbox" style="height:260px"><canvas id="chNight" role="img" aria-label="Strafensumme je Abend"></canvas></div></div>
-  <div class="card tbl-wrap"><h2 style="margin-bottom:8px">Übersicht je Person</h2><table><thead><tr><th>Name</th><th class="r">Anwesend</th><th class="r">Strafen</th><th class="r">Ø anwesend</th><th class="r">Pudel/Abend</th><th class="r">Siege</th><th class="r">Letzter</th><th class="r">Medaille</th><th class="r">Pin</th><th class="r">Offen</th></tr></thead><tbody>
-  ${arr.sort((a,b)=>b.total-a.total).map(a=>`<tr><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}/${a.ev}</td><td class="r num">${eur(a.total)}</td><td class="r num">${a.pres?eur(a.own/a.pres):'–'}</td><td class="r num">${a.pres?num((a.c.pudel||0)/a.pres):'–'}</td><td class="r num">${a.wins}</td><td class="r num">${a.c.p1||0}</td><td class="r num">${a.medal||0}</td><td class="r num">${a.pin||0}</td><td class="r num ${(L[a.pid]?.open||0)>0.004?'pos':''}">${eur(L[a.pid]?.open||0)}</td></tr>`).join('')}
+  <div class="card tbl-wrap"><h2 style="margin-bottom:8px">Übersicht je Person</h2><table><thead><tr><th>Name</th><th class="r">Anwesend</th><th class="r">Strafen</th><th class="r">Ø anwesend</th><th class="r">Pudel/Abend</th><th class="r">Siege</th><th class="r">Letzter</th><th class="r">Medaille</th><th class="r">Pin</th><th class="r">Spenden</th><th class="r">Offen</th></tr></thead><tbody>
+  ${arr.sort((a,b)=>b.total-a.total).map(a=>`<tr><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}/${a.ev}</td><td class="r num">${eur(a.total)}</td><td class="r num">${a.pres?eur(a.own/a.pres):'–'}</td><td class="r num">${a.pres?num((a.c.pudel||0)/a.pres):'–'}</td><td class="r num">${a.wins}</td><td class="r num">${a.c.p1||0}</td><td class="r num">${a.medal||0}</td><td class="r num">${a.pin||0}</td><td class="r num">${a.don?eur(a.don):'–'}</td><td class="r num ${(L[a.pid]?.open||0)>0.004?'pos':''}">${eur(L[a.pid]?.open||0)}</td></tr>`).join('')}
   </tbody></table></div>`;
   ui._stats={A,penSum,nights,P};
   return h;
