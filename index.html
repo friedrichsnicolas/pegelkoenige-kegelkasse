@@ -525,7 +525,7 @@ function statsData(year){
     nights.push({date:e.date,sum:x.sum,avg:pres.length?x.sum/x.rows.length:0,n:pres.length});
     for(const r of x.rows){const a=A[r.pid]??={pid:r.pid,name:r.name,guest:!!r.guest,ev:0,pres:0,own:0,abs:0,total:0,c:{},wins:0,max:0,maxDate:''};
       a.name=r.name;a.ev++;a.total+=r.total;a.wins+=r.wins;if(medal===r.pid)a.medal=(a.medal||0)+1;if(pin===r.pid)a.pin=(a.pin||0)+1;
-      if(r.present){a.pres++;a.own+=r.total;if(r.total>a.max){a.max=r.total;a.maxDate=e.date}}else a.abs+=r.total;
+      if(r.present){a.pres++;a.own+=r.total;if(r.total>a.max){a.max=r.total;a.maxDate=e.date}const pc=r.c.pudel||0;if(a.pmax==null||pc>a.pmax)a.pmax=pc;if(a.pmin==null||pc<a.pmin)a.pmin=pc}else a.abs+=r.total;
       for(const k in r.c){a.c[k]=(a.c[k]||0)+r.c[k];penSum[k]=(penSum[k]||0)+r.c[k]*x.price(k)}}}
   return {E,A,penSum,nights};
 }
@@ -561,6 +561,14 @@ function renderStats(){
    <div class="card"><h2>Strafen je Person</h2><div class="legend" style="margin:6px 0"><span><i style="background:var(--accent)"></i>selbst erkegelt</span><span><i style="background:var(--bar2)"></i>Ø bei Abwesenheit</span></div><div class="chartbox" style="height:340px"><canvas id="chPers" role="img" aria-label="Strafen je Person"></canvas></div></div>
    <div class="card"><h2>Strafen nach Art</h2><div class="chartbox" style="height:370px"><canvas id="chPen" role="img" aria-label="Strafen nach Art in Euro"></canvas></div></div>
   </div>
+  ${(()=>{const pl=arr.filter(a=>a.pres>0).map(a=>({...a,pp:(a.c.pudel||0)/a.pres})).sort((a,b)=>a.pp-b.pp);
+    const tot=pl.reduce((s,a)=>s+(a.c.pudel||0),0),tp=pl.reduce((s,a)=>s+a.pres,0);
+    ui._pudel=pl;
+    return `<div class="card"><div class="row" style="margin-bottom:8px"><h2>Pudel pro Anwesenheit</h2><span class="spacer"></span><span class="muted num">Club-Schnitt: <b>${tp?(tot/tp).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}):0}</b> Pudel pro Person und Abend</span></div>
+    <div class="grid2"><div class="chartbox" style="height:${Math.max(220,pl.length*30+40)}px"><canvas id="chPudel" role="img" aria-label="Durchschnittliche Pudel pro Anwesenheit"></canvas></div>
+    <div class="tbl-wrap"><table><thead><tr><th class="r">#</th><th>Name</th><th class="r">Anwesend</th><th class="r">Pudel</th><th class="r">Ø pro Abend</th><th class="r">Bester</th><th class="r">Schlechtester</th></tr></thead><tbody>
+    ${pl.map((a,i)=>`<tr><td class="r num">${i+1}</td><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}</td><td class="r num">${a.c.pudel||0}</td><td class="r num"><b>${a.pp.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></td><td class="r num">${a.pmin??'–'}</td><td class="r num">${a.pmax??'–'}</td></tr>`).join('')}
+    </tbody></table><p class="muted small">Nur Abende, an denen die Person anwesend war. Rang 1 = wenigste Pudel pro Abend. Bester/Schlechtester = wenigste/meiste Pudel an einem Abend.</p></div></div></div>`})()}
   <div class="card"><h2>Summe je Abend</h2><div class="chartbox" style="height:260px"><canvas id="chNight" role="img" aria-label="Strafensumme je Abend"></canvas></div></div>
   <div class="card tbl-wrap"><h2 style="margin-bottom:8px">Übersicht je Person</h2><table><thead><tr><th>Name</th><th class="r">Anwesend</th><th class="r">Strafen</th><th class="r">Ø anwesend</th><th class="r">Pudel/Abend</th><th class="r">Siege</th><th class="r">Letzter</th><th class="r">Medaille</th><th class="r">Pin</th><th class="r">Offen</th></tr></thead><tbody>
   ${arr.sort((a,b)=>b.total-a.total).map(a=>`<tr><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}/${a.ev}</td><td class="r num">${eur(a.total)}</td><td class="r num">${a.pres?eur(a.own/a.pres):'–'}</td><td class="r num">${a.pres?num((a.c.pudel||0)/a.pres):'–'}</td><td class="r num">${a.wins}</td><td class="r num">${a.c.p1||0}</td><td class="r num">${a.medal||0}</td><td class="r num">${a.pin||0}</td><td class="r num ${(L[a.pid]?.open||0)>0.004?'pos':''}">${eur(L[a.pid]?.open||0)}</td></tr>`).join('')}
@@ -585,6 +593,10 @@ function drawStats(){
   o=baseOpts();o.indexAxis='y';o.scales={x:{grid:{color:css('--line')},border:{display:false},ticks:{callback:v=>num(v)+' €'}},y:{grid:{display:false}}};
   o.plugins.tooltip.callbacks.label=c=>' '+eur(c.parsed.x);
   charts.push(new Chart($('#chPen'),{type:'bar',data:{labels:pe.map(([k])=>s.P[k]?.name||k),datasets:[{data:pe.map(([,v])=>r2(v)),backgroundColor:acc,borderRadius:4,maxBarThickness:20}]},options:o}));
+  const pl=ui._pudel||[];
+  if($('#chPudel')){o=baseOpts();o.indexAxis='y';o.scales={x:{beginAtZero:true,grid:{color:css('--line')},border:{display:false}},y:{grid:{display:false}}};
+    o.plugins.tooltip.callbacks.label=c=>' Ø '+num(c.parsed.x)+' Pudel pro Abend';
+    charts.push(new Chart($('#chPudel'),{type:'bar',data:{labels:pl.map(a=>a.name),datasets:[{data:pl.map(a=>r2(a.pp)),backgroundColor:acc,borderRadius:4,maxBarThickness:18}]},options:o}))}
   o=baseOpts();
   charts.push(new Chart($('#chNight'),{type:'line',data:{labels:s.nights.map(n=>dshort(n.date)),datasets:[{label:'Summe',data:s.nights.map(n=>n.sum),borderColor:acc,backgroundColor:acc+'22',fill:true,borderWidth:2,pointRadius:4,pointBackgroundColor:acc,tension:.25}]},options:o}));
 }
