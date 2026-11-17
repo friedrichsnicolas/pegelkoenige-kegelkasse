@@ -896,7 +896,7 @@ function authMsg(e){const c=e&&e.code||'';
   if(/api-key|app-not-authorized|configuration-not-found|operation-not-allowed/.test(c))return 'Die Firebase-Konfiguration passt nicht ('+c+'). Unten „Konfiguration ändern“ tippen.';
   return 'Anmeldung fehlgeschlagen ('+c+').'}
 function doLogin(){const em=$('#lgMail').value.trim(),pw=$('#lgPw').value;if(!em||!pw){$('#lgErr').textContent='Bitte E-Mail und Passwort eingeben.';return}
-  $('#lgErr').textContent='Melde an …';fbAuth.signInWithEmailAndPassword(em,pw).catch(e=>{$('#lgErr').textContent=authMsg(e)})}
+  $('#lgErr').textContent='Melde an …';fbAuth.signInWithEmailAndPassword(em,pw).catch(e=>{$('#lgErr').textContent=authMsg(e);if(/api-key|app-not-authorized|configuration-not-found/.test(e&&e.code||'')){const b=$('#fbResetBtn');if(b)b.hidden=false}})}
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.target.id==='lgPw'||e.target.id==='lgMail'))doLogin()});
 function fbScreen(){
   const lg='<span class="logo hero-logo"><svg viewBox="0 0 640 640" aria-hidden="true"><use href="#lg"/></svg></span>';
@@ -908,7 +908,7 @@ function fbScreen(){
     <label class="fld">E-Mail<input class="inp" id="lgMail" type="email" autocomplete="username"></label>
     <label class="fld">Passwort<input class="inp" id="lgPw" type="password" autocomplete="current-password"></label>
     <div class="small" id="lgErr" role="status" style="min-height:20px;color:var(--bad)"></div>
-    <button class="btn primary" data-act="login">Anmelden</button><div class="row" style="justify-content:center"><button class="btn small" data-act="pwreset" style="border:0;background:none">Passwort vergessen?</button><button class="btn small" data-act="fbreset" style="border:0;background:none">Konfiguration ändern</button></div></div>`;
+    <button class="btn primary" data-act="login">Anmelden</button><div class="row" style="justify-content:center"><button class="btn small" data-act="pwreset" style="border:0;background:none">Passwort vergessen?</button><button class="btn small" data-act="fbreset" id="fbResetBtn" style="border:0;background:none" ${window.KK_FIREBASE?'hidden':''}>Konfiguration ändern</button></div></div>`;
   if(fbState==='error')return `<div class="card empty">${lg}<h2>Keine Verbindung</h2><p class="muted">${esc(loadErr)}</p></div>`;
   return `<div class="card empty">${lg}Wird geladen …</div>`;
 }
