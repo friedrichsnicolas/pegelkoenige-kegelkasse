@@ -1,0 +1,16 @@
+{
+  "name": "Anrather Pegelkönige – Kegelkasse",
+  "short_name": "Kegelkasse",
+  "start_url": "./#eingabe",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#edece8",
+  "theme_color": "#8a5300",
+  "lang": "de",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

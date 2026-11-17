@@ -1,0 +1,13 @@
+// Offline-Cache für die App-Oberfläche. Die Daten selbst puffert Firebase.
+const C = 'kegelkasse-v1';
+const SHELL = ['./', 'index.html', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(SHELL))); self.skipWaiting(); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k))))); self.clients.claim(); });
+self.addEventListener('fetch', e => {
+  const r = e.request; if (r.method !== 'GET') return;
+  const u = new URL(r.url);
+  const cacheable = u.origin === location.origin || /(^|\.)cdnjs\.cloudflare\.com$|(^|\.)gstatic\.com$|^fonts\.googleapis\.com$/.test(u.hostname);
+  if (!cacheable) return;
+  e.respondWith(fetch(r).then(res => { if (res.ok || res.type === 'opaque') { const cp = res.clone(); caches.open(C).then(c => c.put(r, cp)); } return res; })
+    .catch(() => caches.match(r, { ignoreSearch: true }).then(m => m || caches.match('index.html'))));
+});
