@@ -1,12 +1,10 @@
-// Firebase-Konfiguration der Kegelkasse
-// Werte findest du in der Firebase-Konsole: Projekteinstellungen (Zahnrad) → Allgemein → „Deine Apps“ → Web-App → „SDK-Einrichtung und -Konfiguration“ → „Konfiguration“.
-// Die Platzhalter unten ersetzen, Datei speichern, dann den ganzen Ordner hochladen.
-// Hinweis: Diese Werte sind kein Passwort. Geschützt werden die Daten durch die Anmeldung und die Regeln aus firestore.rules.
+// Firebase-Konfiguration der Kegelkasse (Projekt pegelkoenige-kasse)
+// Diese Werte sind kein Passwort. Geschützt werden die Daten durch die Anmeldung und die Regeln aus firestore.rules.
 window.KK_FIREBASE = {
-  apiKey: "DEIN_API_KEY",
-  authDomain: "DEIN-PROJEKT.firebaseapp.com",
-  projectId: "DEIN-PROJEKT",
-  storageBucket: "DEIN-PROJEKT.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "DEINE_APP_ID"
+  "apiKey": "AIzaSyAiZjxzXGhIf2Iti81K6A4f8GPQZQEHSyM",
+  "authDomain": "pegelkoenige-kasse.firebaseapp.com",
+  "projectId": "pegelkoenige-kasse",
+  "storageBucket": "pegelkoenige-kasse.firebasestorage.app",
+  "messagingSenderId": "685642579432",
+  "appId": "1:685642579432:web:9bd5fd69fca3b3842bf85d"
 };
