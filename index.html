@@ -382,6 +382,12 @@ function renderEingabe(){
   return out;
 }
 
+const TROPHIES=[['pudelMedal','Pudelmedaille mitgenommen'],['winnerPin','Siegerpin mitgenommen']];
+function trophyFields(ev,disabled,dlg){
+  const x=evalEv(ev);const mem=x.rows.filter(r=>r.present&&!r.guest);
+  return TROPHIES.map(([k,l])=>{const cur=ev[k];const curOk=!cur||mem.some(r=>r.pid===cur);
+    return `<label class="fld">${l}<select class="inp" ${dlg?`data-dtrophy="${k}"`:`data-trophy="${k}"`} ${disabled?'disabled':''}><option value="">– noch offen –</option>${mem.map(r=>`<option value="${esc(r.pid)}" ${cur===r.pid?'selected':''}>${esc(r.name)}</option>`).join('')}${curOk?'':`<option value="${esc(cur)}" selected>${esc(ev.people?.[cur]?.name||cur)} (nicht anwesend)</option>`}</select></label>`}).join('');
+}
 function renderUebersicht(){
   const ev=curEv();if(!ev)return noEvHtml();
   const x=evalEv(ev);const present=x.rows.filter(r=>r.present);
@@ -404,6 +410,7 @@ function renderUebersicht(){
     <div class="kpi"><div class="l">Heute kassiert</div><div class="v num">${eur(paidToday)}</div></div>
     <div class="kpi"><div class="l">Beiträge</div><div class="v num">${eur(contrib)}</div></div></div>
   <div class="records">${rec('Pudel des Abends',tp,(tp?.c.pudel||0)+' Pudel')}${rec('Meiste Siege',tw,tw?.wins?tw.wins+' Siege':0)}${rec('Teuerster Spieler',tt,tt?.total?eur(tt.total):0)}${rec('Rote Laterne',tl,(tl?.c.p1||0)?(tl.c.p1)+'× Letzter':0)}</div>`;
+  h+=`<div class="card"><h2 style="margin-bottom:8px">Pudelmedaille & Siegerpin</h2><div class="row" style="align-items:end">${trophyFields(ev,ev.status!=='open',false)}${ev.status!=='open'?'<span class="muted small">Zum Ändern den Abend wieder öffnen.</span>':''}</div></div>`;
   return h+renderMatrix(ev,x);
 }
 function renderMatrix(ev,x){
@@ -514,10 +521,10 @@ function renderBeitraege(){
 function statsData(year){
   const E=evList().filter(e=>e.status!=='cancelled'&&e.date.startsWith(year));
   const A={};const penSum={};const nights=[];
-  for(const e of E){const x=evalEv(e);const pres=x.rows.filter(r=>r.present);
+  for(const e of E){const x=evalEv(e);const pres=x.rows.filter(r=>r.present);const medal=e.pudelMedal,pin=e.winnerPin;
     nights.push({date:e.date,sum:x.sum,avg:pres.length?x.sum/x.rows.length:0,n:pres.length});
     for(const r of x.rows){const a=A[r.pid]??={pid:r.pid,name:r.name,guest:!!r.guest,ev:0,pres:0,own:0,abs:0,total:0,c:{},wins:0,max:0,maxDate:''};
-      a.name=r.name;a.ev++;a.total+=r.total;a.wins+=r.wins;
+      a.name=r.name;a.ev++;a.total+=r.total;a.wins+=r.wins;if(medal===r.pid)a.medal=(a.medal||0)+1;if(pin===r.pid)a.pin=(a.pin||0)+1;
       if(r.present){a.pres++;a.own+=r.total;if(r.total>a.max){a.max=r.total;a.maxDate=e.date}}else a.abs+=r.total;
       for(const k in r.c){a.c[k]=(a.c[k]||0)+r.c[k];penSum[k]=(penSum[k]||0)+r.c[k]*x.price(k)}}}
   return {E,A,penSum,nights};
@@ -546,6 +553,8 @@ function renderStats(){
     ${rec('Teuerster Abend',a=>a.max,(a)=>`${eur(a.max)} am ${dshort(a.maxDate)}`,arr)}
     ${rec('Treueste Anwesenheit',a=>a.pres,(a)=>`${a.pres} von ${E.length} Abenden`)}
     ${rec('Glöckchen-Meister',a=>a.c.glocke||0,(a)=>`${a.c.glocke||0} Glöckchen`,arr)}
+    ${rec('Pudelmedaille am häufigsten',a=>a.medal||0,(a)=>`${a.medal}× mitgenommen`)}
+    ${rec('Siegerpin am häufigsten',a=>a.pin||0,(a)=>`${a.pin}× mitgenommen`)}
     ${rec('Mitgliedskegel vergessen',a=>a.c.mk||0,(a)=>`${a.c.mk||0}×`)}
   </div></div>
   <div class="grid2">
@@ -553,8 +562,8 @@ function renderStats(){
    <div class="card"><h2>Strafen nach Art</h2><div class="chartbox" style="height:370px"><canvas id="chPen" role="img" aria-label="Strafen nach Art in Euro"></canvas></div></div>
   </div>
   <div class="card"><h2>Summe je Abend</h2><div class="chartbox" style="height:260px"><canvas id="chNight" role="img" aria-label="Strafensumme je Abend"></canvas></div></div>
-  <div class="card tbl-wrap"><h2 style="margin-bottom:8px">Übersicht je Person</h2><table><thead><tr><th>Name</th><th class="r">Anwesend</th><th class="r">Strafen</th><th class="r">Ø anwesend</th><th class="r">Pudel/Abend</th><th class="r">Siege</th><th class="r">Letzter</th><th class="r">Offen</th></tr></thead><tbody>
-  ${arr.sort((a,b)=>b.total-a.total).map(a=>`<tr><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}/${a.ev}</td><td class="r num">${eur(a.total)}</td><td class="r num">${a.pres?eur(a.own/a.pres):'–'}</td><td class="r num">${a.pres?num((a.c.pudel||0)/a.pres):'–'}</td><td class="r num">${a.wins}</td><td class="r num">${a.c.p1||0}</td><td class="r num ${(L[a.pid]?.open||0)>0.004?'pos':''}">${eur(L[a.pid]?.open||0)}</td></tr>`).join('')}
+  <div class="card tbl-wrap"><h2 style="margin-bottom:8px">Übersicht je Person</h2><table><thead><tr><th>Name</th><th class="r">Anwesend</th><th class="r">Strafen</th><th class="r">Ø anwesend</th><th class="r">Pudel/Abend</th><th class="r">Siege</th><th class="r">Letzter</th><th class="r">Medaille</th><th class="r">Pin</th><th class="r">Offen</th></tr></thead><tbody>
+  ${arr.sort((a,b)=>b.total-a.total).map(a=>`<tr><td><b>${esc(a.name)}</b>${a.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${a.pres}/${a.ev}</td><td class="r num">${eur(a.total)}</td><td class="r num">${a.pres?eur(a.own/a.pres):'–'}</td><td class="r num">${a.pres?num((a.c.pudel||0)/a.pres):'–'}</td><td class="r num">${a.wins}</td><td class="r num">${a.c.p1||0}</td><td class="r num">${a.medal||0}</td><td class="r num">${a.pin||0}</td><td class="r num ${(L[a.pid]?.open||0)>0.004?'pos':''}">${eur(L[a.pid]?.open||0)}</td></tr>`).join('')}
   </tbody></table></div>`;
   ui._stats={A,penSum,nights,P};
   return h;
@@ -666,6 +675,7 @@ let flashT;function flashTile(k){ui.flash=k;clearTimeout(flashT);flashT=setTimeo
 document.addEventListener('change',async e=>{
   const t=e.target;
   if(t.id==='evSel'){ui.eid=t.value;ui.undo=[];ui.sel=null;ui.last='';render();return}
+  if(t.dataset.trophy){patchEv(ui.eid,{[t.dataset.trophy]:t.value||null});return}
   if(t.id==='multSel'){patchEv(ui.eid,{multPen:t.value||null});return}
   if(t.id==='showAll'){ui.showAll=t.checked;render();return}
   if(t.id==='yearSel'){ui.year=t.value;render();return}
@@ -792,11 +802,11 @@ function openMult(closeAfter){
   const ev=getEv(ui.eid);if(!ev)return;const f=ev.factor||4;
   const base=evalEv({...ev,multPen:null}).sum;
   const opts=pensFor(ev).map(p=>{const cnt=Object.values(ev.counts||{}).reduce((s,c)=>s+(c[p.id]||0),0);return {p,cnt,extra:r2(evalEv({...ev,multPen:p.id}).sum-base)}});
-  dialog(`<h2>Strafe des Abends ×${f}</h2><p class="muted" style="margin:0">Alle Strafen sind erfasst? Wähle jetzt die Strafe, die ${f}-fach zählt. Rechts siehst du, um wie viel sich die Summe des Abends erhöht (Abwesende über den Durchschnitt eingerechnet).</p>
+  dialog(`${closeAfter?`<h2>Abend abschließen</h2><div class="row" style="align-items:end">${trophyFields(ev,false,true)}</div>`:''}<h2>Strafe des Abends ×${f}</h2><p class="muted" style="margin:0">Alle Strafen sind erfasst? Wähle jetzt die Strafe, die ${f}-fach zählt. Rechts siehst du, um wie viel sich die Summe des Abends erhöht (Abwesende über den Durchschnitt eingerechnet).</p>
     <div style="display:grid;gap:6px;max-height:50vh;overflow:auto">${opts.map(o=>`<button class="pbtn ${ev.multPen===o.p.id?'sel':''}" data-m="${o.p.id}" style="font-size:16px;min-height:50px"><span>${esc(o.p.name)} <span class="muted small">· ${o.cnt}×</span></span><span class="amt num">+${eur(o.extra)}</span></button>`).join('')}</div>
     <div class="banner small">Summe ohne Strafe des Abends: <b class="num">${eur(base)}</b></div>
     <div class="row"><button class="btn" data-m="">Ohne Strafe des Abends</button><span class="spacer"></span><button class="btn" data-close>Abbrechen</button></div>`,box=>{
-    box.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const v=b.dataset.m||null;patchEv(ev.id,closeAfter?{multPen:v,status:'closed'}:{multPen:v});closeDlg();toast(closeAfter?'Abend abgeschlossen':'Strafe des Abends gespeichert');if(closeAfter){location.hash='uebersicht'}});
+    box.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const v=b.dataset.m||null;const tp={};box.querySelectorAll('[data-dtrophy]').forEach(sl=>tp[sl.dataset.dtrophy]=sl.value||null);patchEv(ev.id,closeAfter?{multPen:v,status:'closed',...tp}:{multPen:v});closeDlg();toast(closeAfter?'Abend abgeschlossen':'Strafe des Abends gespeichert');if(closeAfter){location.hash='uebersicht'}});
   });
 }
 function openOverride(pid){
