@@ -427,7 +427,7 @@ function openItems(){
   for(const o of Object.values(L)){
     const isMem=!!cfg.members[o.pid];const act=isMem&&cfg.members[o.pid].active!==false;
     let soll=0,paid=0,missing=[];
-    if(act){for(const e of E){soll+=amt;const v=e.contrib?.[o.pid]||0;paid+=v;if(!v)missing.push(e)}}
+    if(act){for(const e of E){const pp=e.people?.[o.pid];if(!pp||pp.removed)continue;soll+=amt;const v=e.contrib?.[o.pid]||0;paid+=v;if(!v)missing.push(e)}}
     const oc=r2(Math.max(0,soll-paid));
     const os=r2(o.open);
     if(oc>0.004||os>0.004||os<-0.004)out.push({pid:o.pid,name:o.name,guest:o.guest,strafen:os,beitr:oc,nBeitr:Math.round(oc/amt*100)/100,missing:(n=>n>0?missing.slice(-n):[])(Math.ceil(oc/amt-1e-9)),total:r2(Math.max(0,os)+oc)});
@@ -452,7 +452,7 @@ function renderOffen(){
     <td class="r"><div class="row" style="flex-wrap:nowrap;justify-content:flex-end">${o.strafen>0.004?`<button class="btn small primary" data-act="pay" data-pid="${esc(o.pid)}">Strafe zahlen</button>`:''}${o.beitr>0.004?`<button class="btn small" data-act="paycontrib" data-pid="${esc(o.pid)}">Beiträge kassieren</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="6" class="muted">Niemand hat offene Beträge.</td></tr>'}
   <tr><td><b>Summe</b></td><td class="r num"><b>${eur(sS)}</b></td><td class="r num"><b>${eur(sB)}</b></td><td></td><td class="r num"><b>${eur(sS+sB)}</b></td><td></td></tr>
   </tbody></table></div>
-  <p class="muted small">Beiträge: ${eur(cfg.contribAmount||5)} für jeden Kegelabend bis heute (auch ausgefallene), abzüglich bereits gezahlter Beiträge. Strafen: alle Abende abzüglich Zahlungen. Der laufende Abend ist schon enthalten.</p></div>`;
+  <p class="muted small">Beiträge: ${eur(cfg.contribAmount||5)} für jeden Kegelabend bis heute, an dem die Person in der Liste stand (auch ausgefallene), abzüglich bereits gezahlter Beiträge. Strafen: alle Abende abzüglich Zahlungen. Der laufende Abend ist schon enthalten.</p></div>`;
   return h;
 }
 function openContribPay(pid){
@@ -946,16 +946,17 @@ function openImport(){
     <div class="banner small" id="impInfo">Noch keine Daten gelesen.</div>
     <div class="row"><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" id="impGo" disabled>Importieren</button></div>`,box=>{
     let data=null;const info=box.querySelector('#impInfo'),go=box.querySelector('#impGo');
-    const parse=txt=>{try{const o=JSON.parse(txt);if(!o||!o.config||!o.evenings)throw 0;data=o;
+    const parse=txt=>{try{const o=JSON.parse(txt);if(!o||!o.evenings||!(o.config||o.app==='kegelkasse'))throw 0;data=o;
       info.innerHTML=`Gefunden: <b>${Object.keys(o.evenings).length}</b> Abende, <b>${Object.keys(o.payments||{}).length}</b> Zahlungen, <b>${Object.keys(o.cashbook||{}).length}</b> Kassenbuch-Einträge${o.exported?' · Stand '+new Date(o.exported).toLocaleString('de-DE'):''}`;go.disabled=false}
       catch(e){data=null;go.disabled=true;info.textContent='Das sieht nicht nach einer Kegelkasse-Sicherung aus.'}};
     box.querySelector('#impT').oninput=e=>parse(e.target.value);
     box.querySelector('#impF').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>parse(r.result);r.readAsText(f)};
-    go.onclick=async()=>{go.disabled=true;const jobs=[['config/main',data.config]];
+    go.onclick=async()=>{go.disabled=true;const jobs=data.config?[['config/main',data.config]]:[];
       for(const [k,v] of Object.entries(data.evenings))jobs.push(['evenings/'+k,v]);
       for(const [k,v] of Object.entries(data.payments||{}))jobs.push(['payments/'+k,v]);
       for(const [k,v] of Object.entries(data.cashbook||{}))jobs.push(['cashbook/'+k,v]);
       let done=0,fail=0;
+      if(data.configMerge&&!data.config)await db.doc('config/main').update(data.configMerge).catch(()=>fail++);
       for(let i=0;i<jobs.length;i+=10){await Promise.all(jobs.slice(i,i+10).map(([p,v])=>db.doc(p).set(v).then(()=>done++).catch(()=>fail++)));info.textContent=`Importiere … ${done+fail} / ${jobs.length}`}
       closeDlg();toast(fail?`${done} importiert, ${fail} fehlgeschlagen`:`${done} Einträge importiert`)};
   });
