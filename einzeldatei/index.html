@@ -421,6 +421,10 @@ function renderMatrix(ev,x){
   return h+`<tr><td><b>Summe</b></td>${ps.map(p=>`<td class="cnt">${x.rows.reduce((s,r)=>s+(r.c[p.id]||0),0)||''}</td>`).join('')}<td></td><td class="r num"><b>${eur(x.sum)}</b></td><td></td><td></td></tr></tbody></table></div>`;
 }
 
+function contribDue(ev,pid){const pp=ev.people?.[pid];if(!pp||pp.removed)return 0;
+  if(pp.guest){if(!pp.present||ev.status==='cancelled'||ev.date<(cfg.guestContribFrom||'9999'))return 0;return cfg.guestContrib??10}
+  return cfg.contribAmount||5}
+function contribAmt(ev,pid){return ev.people?.[pid]?.guest?(cfg.guestContrib??10):(cfg.contribAmount||5)}
 function openItems(){
   const td=today();const amt=cfg.contribAmount||5;const L=ledger();
   const E=evList().filter(e=>e.date<=td);
@@ -428,10 +432,11 @@ function openItems(){
   for(const o of Object.values(L)){
     const isMem=!!cfg.members[o.pid];const act=isMem&&cfg.members[o.pid].active!==false;
     let soll=0,paid=0,missing=[];
-    if(act){for(const e of E){const pp=e.people?.[o.pid];if(!pp||pp.removed)continue;soll+=amt;const v=e.contrib?.[o.pid]||0;paid+=v;if(!v)missing.push(e)}}
+    const unit=isMem?amt:(cfg.guestContrib??10);
+    if(act||!isMem){for(const e of E){const due=contribDue(e,o.pid);if(!due)continue;soll+=due;const v=e.contrib?.[o.pid]||0;paid+=v;if(!v)missing.push(e)}}
     const oc=r2(Math.max(0,soll-paid));
     const os=r2(o.open);
-    if(oc>0.004||os>0.004||os<-0.004)out.push({pid:o.pid,name:o.name,guest:o.guest,strafen:os,beitr:oc,nBeitr:Math.round(oc/amt*100)/100,missing:(n=>n>0?missing.slice(-n):[])(Math.ceil(oc/amt-1e-9)),total:r2(Math.max(0,os)+oc)});
+    if(oc>0.004||os>0.004||os<-0.004)out.push({pid:o.pid,name:o.name,guest:o.guest,strafen:os,beitr:oc,nBeitr:Math.round(oc/unit*100)/100,missing:(n=>n>0?missing.slice(-n):[])(Math.ceil(oc/unit-1e-9)),total:r2(Math.max(0,os)+oc)});
   }
   return out.sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
 }
@@ -460,13 +465,13 @@ function renderOffen(){
 function openContribPay(pid){
   const o=openItems().find(x=>x.pid===pid);if(!o)return;const amt=cfg.contribAmount||5;
   dialog(`<h2>Beiträge kassieren: ${esc(o.name)}</h2><p class="muted" style="margin:0">Offen: <b class="num">${eur(o.beitr)}</b> (${o.missing.length} Abend${o.missing.length===1?'':'e'})</p>
-    <div style="display:grid;gap:6px">${o.missing.map(e=>`<label class="row"><input type="checkbox" data-e="${e.id}" checked> ${dlong(e.date)} · ${eur(amt)}</label>`).join('')}</div>
+    <div style="display:grid;gap:6px">${o.missing.map(e=>`<label class="row"><input type="checkbox" data-e="${e.id}" data-a="${contribDue(e,pid)}" checked> ${dlong(e.date)} · ${eur(contribDue(e,pid))}</label>`).join('')}</div>
     <div class="banner small" id="cpSum"></div>
     <div class="row"><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" id="cpS">Als bezahlt eintragen</button></div>`,box=>{
-    const upd=()=>{const n=box.querySelectorAll('[data-e]:checked').length;box.querySelector('#cpSum').innerHTML=`Kassieren: <b class="num">${eur(n*amt)}</b>`};
+    const upd=()=>{const n=[...box.querySelectorAll('[data-e]:checked')].reduce((s,c)=>s+(+c.dataset.a),0);box.querySelector('#cpSum').innerHTML=`Kassieren: <b class="num">${eur(n)}</b>`};
     box.querySelectorAll('[data-e]').forEach(c=>c.onchange=upd);upd();
     box.querySelector('#cpS').onclick=()=>{const sel=[...box.querySelectorAll('[data-e]:checked')].map(c=>c.dataset.e);if(!sel.length){toast('Keinen Abend gewählt');return}
-      sel.forEach(eid=>patchEv(eid,{contrib:{[pid]:amt}}));closeDlg();toast(`${eur(sel.length*amt)} Beiträge eingetragen`)};
+      let tot=0;sel.forEach(eid=>{const a=contribDue(getEv(eid),pid)||contribAmt(getEv(eid),pid);tot+=a;patchEv(eid,{contrib:{[pid]:a}})});closeDlg();toast(`${eur(tot)} Beiträge eingetragen`)};
   });
 }
 function renderKasse(){
@@ -502,18 +507,24 @@ function renderBeitraege(){
   const E=evList();const M=members(false);const amt=cfg.contribAmount||5;
   const years=[...new Set(E.map(e=>e.date.slice(0,4)))];const year=ui.year&&years.includes(ui.year)?ui.year:years[years.length-1];
   const EY=E.filter(e=>e.date.startsWith(year||''));
-  let h=`<div class="card"><div class="row" style="margin-bottom:10px"><h2>Beiträge ${year||''}</h2><span class="muted">${eur(amt)} pro Kegelabend · Feld antippen = bezahlt</span><span class="spacer"></span>
+  let h=`<div class="card"><div class="row" style="margin-bottom:10px"><h2>Beiträge ${year||''}</h2><span class="muted">${eur(amt)} pro Kegelabend, Gäste ${eur(cfg.guestContrib??10)} · Feld antippen = bezahlt</span><span class="spacer"></span><label class="row small muted"><input type="checkbox" data-guests ${ui.showGuests?'checked':''}> Gäste anzeigen</label>
     ${years.length>1?`<select class="inp" id="yearSel">${years.map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}</select>`:''}</div>
     <div class="tbl-wrap"><table><thead><tr><th>Name</th>${EY.map(e=>`<th class="c">${dshort(e.date).slice(0,5)}<br><button class="btn small" data-act="contriball" data-eid="${e.id}" title="Allen Anwesenden ohne Zahlung eintragen">alle</button></th>`).join('')}<th class="r">Bezahlt</th><th class="r">Soll</th><th class="r">Saldo</th></tr></thead><tbody>`;
   let tot=0;
-  for(const m of M){
-    let paid=0;
-    h+=`<tr><td><b>${esc(m.name)}</b></td>`+EY.map(e=>{const v=e.contrib?.[m.id]||0;paid+=v;return `<td class="c"><button class="cell ${v?'paid':''} ${e.status==='cancelled'?'cancel':''}" data-act="contrib" data-eid="${e.id}" data-pid="${m.id}" aria-label="${esc(m.name)} ${dshort(e.date)}">${v?num(v):''}</button></td>`}).join('');
-    const soll=EY.length*amt;const sal=r2(paid-soll);tot+=paid;
+  const G={};for(const e of EY)for(const [gid,pp] of Object.entries(e.people||{}))if(pp?.guest&&!pp.removed)G[gid]={id:gid,name:pp.name,guest:true};
+  const GL=Object.values(G).sort((a,b)=>a.name.localeCompare(b.name));
+  const rowsP=[...M,...(ui.showGuests?GL:[])];
+  for(const m of rowsP){
+    let paid=0,soll=0;
+    h+=`<tr><td><b>${esc(m.name)}</b>${m.guest?'<span class="tag">Gast</span>':''}</td>`+EY.map(e=>{const v=e.contrib?.[m.id]||0;paid+=v;const pp=e.people?.[m.id];const listed=pp&&!pp.removed&&(!m.guest||pp.present);soll+=contribDue(e,m.id);
+      if(!listed&&!v)return `<td class="c muted">·</td>`;
+      return `<td class="c"><button class="cell ${v?'paid':''} ${e.status==='cancelled'?'cancel':''}" data-act="contrib" data-eid="${e.id}" data-pid="${m.id}" aria-label="${esc(m.name)} ${dshort(e.date)}">${v?num(v):''}</button></td>`}).join('');
+    const sal=r2(paid-soll);tot+=paid;
     h+=`<td class="r num">${eur(paid)}</td><td class="r num">${eur(soll)}</td><td class="r num ${sal<-0.004?'pos':sal>0.004?'neg':''}">${sal>0?'+':''}${eur(sal)}</td></tr>`;
   }
   h+=`<tr><td><b>Summe</b></td>${EY.map(e=>`<td class="c num">${num(Object.values(e.contrib||{}).reduce((a,b)=>a+(b||0),0))}</td>`).join('')}<td class="r num"><b>${eur(tot)}</b></td><td></td><td></td></tr></tbody></table></div>
-  <p class="muted small">Soll = Anzahl Abende × Beitrag. Ein negativer Saldo bedeutet: Beiträge offen. Ausgefallene Abende zählen mit.</p></div>`;
+  ${!ui.showGuests&&GL.length?`<p class="muted small" style="margin:8px 0 0">${GL.length===1?'1 Gast':GL.length+' Gäste'} ausgeblendet – „Gäste anzeigen“ antippen.</p>`:''}
+  <p class="muted small">Soll = Abende, an denen die Person in der Liste stand, × Beitrag (· = nicht dabei). Gäste zahlen nur an Abenden, an denen sie anwesend waren. Ein negativer Saldo bedeutet: Beiträge offen. Ausgefallene Abende zählen bei Mitgliedern mit.</p></div>`;
   return h;
 }
 
@@ -647,6 +658,7 @@ function renderSettings(){
     h+=`<div class="card"><h2 style="margin-bottom:10px">Allgemein</h2><div style="display:grid;gap:12px;max-width:560px">
     <label class="fld">Vereinsname<input class="inp" data-cfg="clubName" value="${esc(cfg.clubName||'')}"></label>
     <label class="fld">Beitrag pro Abend (€)<input class="inp narrow" inputmode="decimal" data-cfg="contribAmount" data-num value="${num(cfg.contribAmount||0)}"></label>
+    <label class="fld">Beitrag Gäste pro Abend (€)<input class="inp narrow" inputmode="decimal" data-cfg="guestContrib" data-num value="${num(cfg.guestContrib??10)}"></label>
     <label class="fld">Kegelbahn pro Abend, Vorschlag (€)<input class="inp narrow" inputmode="decimal" data-cfg="laneCost" data-num value="${num(cfg.laneCost??25)}"></label>
     <div class="row"><label class="fld">Anfangsbestand Kasse (€)<input class="inp" inputmode="decimal" data-cfg="startBalance" data-num value="${num(cfg.startBalance||0)}"></label>
     <label class="fld">Bezeichnung<input class="inp" data-cfg="startLabel" value="${esc(cfg.startLabel||'')}"></label></div></div></div>
@@ -732,6 +744,7 @@ document.addEventListener('click',async e=>{
     case 'contrib':contribClick(b.dataset.eid,b.dataset.pid);break;
     case 'contriball':{const e2=getEv(b.dataset.eid);const amt=cfg.contribAmount||5;const p={};
       for(const m of members(false)){const pr=e2.people?.[m.id];if(pr&&pr.present&&!pr.removed&&!(e2.contrib?.[m.id]))p[m.id]=amt}
+      if(ui.showGuests)for(const [gid,pr] of Object.entries(e2.people||{})){if(pr?.guest&&pr.present&&!pr.removed&&!(e2.contrib?.[gid]))p[gid]=contribAmt(e2,gid)}
       if(!Object.keys(p).length){toast('Alle Anwesenden haben bereits bezahlt');break}
       patchEv(e2.id,{contrib:p});toast(Object.keys(p).length+' Beiträge eingetragen');break}
     case 'addmem':{const n=$('#newMem').value.trim();if(!n)break;let id=slug(n);if(cfg.members[id])id+='-'+Date.now().toString(36);
@@ -801,8 +814,8 @@ function openAtt(){
       <div class="row"><span class="muted small">Abwesende Mitglieder erhalten die Durchschnittsstrafe der Anwesenden (ohne Mitgliedskegel).</span><span class="spacer"></span><button class="btn primary" data-close>Fertig</button></div>`;
     box.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const id=b.dataset.m;const m=cfg.members[id];const cur=ppl[id];const on=cur?cur.present&&!cur.removed:false;
       patchEv(ui.eid,{people:{[id]:{name:m.name,guest:false,present:!on,removed:false,order:cur?.order??m.order??50}}});setTimeout(()=>draw(box),0)});
-    box.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{patchEv(ui.eid,{people:{[b.dataset.g]:{removed:true}}});setTimeout(()=>draw(box),0)});
-    const add=(pid,name)=>{patchEv(ui.eid,{people:{[pid]:{name,guest:true,present:true,removed:false,order:100+guests.length}}});ui.sel=pid;setTimeout(()=>draw(box),0)};
+    box.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{patchEv(ui.eid,{people:{[b.dataset.g]:{removed:true}},contrib:{[b.dataset.g]:0}});setTimeout(()=>draw(box),0)});
+    const add=(pid,name)=>{const ga=cfg.guestContrib??10;const has=ev.contrib?.[pid];patchEv(ui.eid,{people:{[pid]:{name,guest:true,present:true,removed:false,order:100+guests.length}},...(!has&&ga>0?{contrib:{[pid]:ga}}:{})});if(!has&&ga>0)toast(`${name}: Gastbeitrag ${eur(ga)} eingetragen`);ui.sel=pid;setTimeout(()=>draw(box),0)};
     box.querySelectorAll('[data-pg]').forEach(b=>b.onclick=()=>add(b.dataset.pg,b.dataset.n));
     const gi=box.querySelector('#gName');
     box.querySelector('#gAdd').onclick=()=>{const n=gi.value.trim();if(!n)return;add('g-'+slug(n),n)};
@@ -927,9 +940,9 @@ function openDelEntry(kind,id){
   });
 }
 function contribClick(eid,pid){
-  const ev=getEv(eid);const v=ev.contrib?.[pid]||0;const amt=cfg.contribAmount||5;
+  const ev=getEv(eid);const v=ev.contrib?.[pid]||0;const amt=contribAmt(ev,pid);
   if(!v){patchEv(eid,{contrib:{[pid]:amt}});return}
-  dialog(`<h2>Beitrag ${esc(cfg.members[pid]?.name||pid)} · ${dshort(ev.date)}</h2>
+  dialog(`<h2>Beitrag ${esc(cfg.members[pid]?.name||ev.people?.[pid]?.name||pid)} · ${dshort(ev.date)}</h2>
     <label class="fld">Betrag (€)<input class="inp narrow" id="bA" inputmode="decimal" value="${num(v)}"></label>
     <div class="row"><button class="btn danger" id="bDel">Als unbezahlt markieren</button><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" id="bS">Speichern</button></div>`,box=>{
     box.querySelector('#bDel').onclick=()=>{patchEv(eid,{contrib:{[pid]:0}});closeDlg()};
@@ -993,6 +1006,7 @@ function exportData(){return {app:'kegelkasse',format:1,exported:new Date().toIS
 let migDone=false;
 function migrate(){
   if(migDone||!cfg||!cfg.penalties)return;migDone=true;
+  if(!cfg.mig?.gcontrib)db.doc('config/main').update({guestContrib:cfg.guestContrib??10,guestContribFrom:cfg.guestContribFrom||today(),mig:{gcontrib:true}}).catch(()=>{});
   if(cfg.mig?.spaet||cfg.penalties.spaet)return;
   const order=Math.max(-1,...Object.values(cfg.penalties).map(p=>p.order??0))+1;
   db.doc('config/main').update({penalties:{spaet:{name:'Zu spät abgesagt',price:15,order,noAvg:true,absentOnly:true,active:true,rates:{},from:today()}},mig:{spaet:true}}).catch(()=>{migDone=false});
