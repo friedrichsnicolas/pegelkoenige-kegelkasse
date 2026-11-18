@@ -269,7 +269,7 @@ function evalEv(ev){
   const people=Object.entries(ev.people||{}).filter(([,p])=>p&&!p.removed).map(([pid,p])=>({pid,...p}))
     .sort((a,b)=>((a.guest?1:0)-(b.guest?1:0))||((a.order??99)-(b.order??99))||String(a.name).localeCompare(b.name));
   const rows=people.map(p=>{const c=ev.counts?.[p.pid]||{};let raw=0,noavg=0;
-    for(const k in c){const v=(c[k]||0)*price(k);raw+=v;if(P[k]?.noAvg)noavg+=v}
+    for(const k in c){const v=(c[k]||0)*price(k);raw+=v;if(P[k]?.noAvg||P[k]?.absentOnly)noavg+=v}
     return {...p,c,raw,noavg,wins:ev.wins?.[p.pid]||0}});
   const pres=rows.filter(r=>r.present);
   const avg=pres.length?r1(pres.reduce((s,r)=>s+r.raw-r.noavg,0)/pres.length):0;
@@ -359,14 +359,14 @@ function renderEingabe(){
   if(locked)out+=`<div class="banner">Dieser Abend ist abgeschlossen. Zum Ändern im Menü „Abend wieder öffnen“ wählen.</div>`;
   if(!present.length)out+=`<div class="banner warn">Noch niemand anwesend. Tippe auf „Anwesenheit“.</div>`;
   out+=`<div class="step ${sel?'dim':''}"><i>1</i>Spieler wählen</div><div class="pstrip">`+present.map(r=>`<button class="pchip ${r.pid===ui.sel?'sel':''}" data-act="sel" data-pid="${esc(r.pid)}" aria-pressed="${r.pid===ui.sel}"><span class="n">${esc(r.name)}</span><span class="a">${eur(r.total)}${r.guest?' · Gast':''}</span></button>`).join('')+`</div>`;
-  if(absent.length)out+=`<div class="absstrip"><span class="muted">Abwesend (nur Mitgliedskegel):</span>${absent.map(r=>`<button class="achip ${r.pid===ui.sel?'sel':''}" data-act="sel" data-pid="${esc(r.pid)}">${esc(r.name)} · ${eur(r.total)}</button>`).join('')}</div>`;
+  if(absent.length)out+=`<div class="absstrip"><span class="muted">Abwesend (Mitgliedskegel, Abwesenheits-Strafen):</span>${absent.map(r=>`<button class="achip ${r.pid===ui.sel?'sel':''}" data-act="sel" data-pid="${esc(r.pid)}">${esc(r.name)} · ${eur(r.total)}</button>`).join('')}</div>`;
   out+=`<div class="selline">${sel?`<span class="step"><i>2</i>Vergehen für</span><span class="who">${esc(sel.name)}</span><span class="muted num">${eur(sel.total)}</span>`:`<span class="step dim"><i>2</i>Vergehen antippen</span><span class="muted">Erst oben einen Spieler auswählen.</span>`}
     <span class="last">${ui.last?esc(ui.last):''}</span><span class="spacer"></span>
     <button class="btn small" data-act="undo" ${ui.undo.length&&!locked?'':'disabled'}>Rückgängig</button></div>`;
   const isAbs=sel&&!sel.present;
   out+=`<div class="ptiles ${sel?'':'nosel'}">`;
   for(const p of tilePens){
-    const n=sel?(sel.c[p.id]||0):0;const ism=ev.multPen===p.id;const dis=locked||!sel||(isAbs&&!p.noAvg);
+    const n=sel?(sel.c[p.id]||0):0;const ism=ev.multPen===p.id;const dis=locked||!sel||(isAbs&&!p.noAvg&&!p.absentOnly)||(!isAbs&&p.absentOnly);
     out+=`<div class="tile ${ism?'ismult':''} ${ui.flash===p.id?'flash':''}"><button class="tile-main" data-act="inc" data-pen="${p.id}" ${dis?'disabled':''}>
       <span class="t-name">${esc(p.name)}</span><span class="t-price num">${eur(x.price(p.id))}${ism?` <b>×${ev.factor||4}</b>`:''}</span>
       <span class="t-count num ${n?'':'zero'}">${sel?n:''}</span></button>
@@ -621,13 +621,14 @@ function renderSettings(){
   if(st==='strafen'){
     const P=pens(true);
     h+=`<div class="card"><div class="row" style="margin-bottom:6px"><h2>Strafenkatalog</h2><span class="spacer"></span><button class="btn primary" data-act="newpen">+ Neue Strafe</button></div>
-    <p class="muted small" style="margin:0 0 10px">Preisänderungen gelten ab dem gewählten Datum. Abende davor behalten ihren alten Preis. „Nicht im Ø“ heißt: Die Strafe zählt nicht in die Durchschnittsstrafe für Abwesende (wie der Mitgliedskegel).</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Strafe</th><th class="r">Preis heute</th><th>Geplant / Verlauf</th><th class="c">Nicht im Ø</th><th class="c">Aktiv</th><th></th></tr></thead><tbody>
+    <p class="muted small" style="margin:0 0 10px">Preisänderungen gelten ab dem gewählten Datum. Abende davor behalten ihren alten Preis. „Nicht im Ø“ heißt: Die Strafe zählt nicht in die Durchschnittsstrafe für Abwesende (wie der Mitgliedskegel). „Nur Abwesende“ heißt: Die Strafe ist nur für abwesende Spieler wählbar und kommt zur Durchschnittsstrafe dazu.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Strafe</th><th class="r">Preis heute</th><th>Geplant / Verlauf</th><th class="c">Nicht im Ø</th><th class="c">Nur Abwesende</th><th class="c">Aktiv</th><th></th></tr></thead><tbody>
     ${P.map(p=>{const rates=Object.entries(p.rates||{}).filter(([,v])=>v!=null).sort((a,b)=>a[0].localeCompare(b[0]));
       const chips=rates.map(([d,v])=>`<span class="pill ${d>td?'open':''}">${d>td?'ab':'seit'} ${dshort(d)}: ${eur(v)} <button class="btn small" style="min-height:24px;padding:0 6px;border:0;background:none" data-act="delrate" data-pen="${p.id}" data-d="${d}" aria-label="Änderung löschen">✕</button></span>`).join(' ');
       return `<tr><td><input class="inp" style="width:100%;min-width:180px" data-pen="${p.id}" data-f="name" value="${esc(p.name)}" aria-label="Name">${p.from&&p.from>td?`<div class="small muted">gilt ab ${dshort(p.from)}</div>`:''}</td>
       <td class="r num"><b>${eur(rateFor(p.id,td))}</b></td><td><div class="row" style="gap:6px">${chips||'<span class="muted small">–</span>'}</div></td>
       <td class="c"><input type="checkbox" data-pen="${p.id}" data-f="noAvg" ${p.noAvg?'checked':''} aria-label="nicht im Durchschnitt"></td>
+      <td class="c"><input type="checkbox" data-pen="${p.id}" data-f="absentOnly" ${p.absentOnly?'checked':''} aria-label="nur bei Abwesenheit"></td>
       <td class="c"><input type="checkbox" data-pen="${p.id}" data-f="active" ${p.active!==false?'checked':''} aria-label="aktiv"></td>
       <td class="r"><button class="btn small" data-act="rate" data-pen="${p.id}">Preis ändern</button></td></tr>`}).join('')}
     </tbody></table></div></div>
@@ -671,10 +672,11 @@ function openNewPen(){
     <label class="fld">Bezeichnung<input class="inp" id="nN" placeholder="z. B. Kugel fallen lassen"></label>
     <div class="row"><label class="fld">Preis (€)<input class="inp narrow" id="nP" inputmode="decimal"></label><label class="fld">Gilt ab<input class="inp" type="date" id="nD" value="${today()}"></label></div>
     <label class="row small"><input type="checkbox" id="nA"> Nicht in die Durchschnittsstrafe für Abwesende einrechnen</label>
+    <label class="row small"><input type="checkbox" id="nAb"> Nur bei Abwesenheit wählbar (z. B. zu spät abgesagt)</label>
     <div class="row"><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" id="nS">Anlegen</button></div>`,box=>{
     box.querySelector('#nS').onclick=async()=>{const n=box.querySelector('#nN').value.trim();if(!n){toast('Bitte Bezeichnung eingeben');return}
       let id=slug(n);if(cfg.penalties[id])id+='-'+Date.now().toString(36);
-      if(await safe(()=>db.doc('config/main').update({penalties:{[id]:{name:n,price:r2(parseNum(box.querySelector('#nP').value)),from:box.querySelector('#nD').value||today(),order:pens(true).length,noAvg:box.querySelector('#nA').checked,active:true,rates:{}}}}),'Anlegen fehlgeschlagen')){closeDlg();toast('Strafe angelegt')}};
+      if(await safe(()=>db.doc('config/main').update({penalties:{[id]:{name:n,price:r2(parseNum(box.querySelector('#nP').value)),from:box.querySelector('#nD').value||today(),order:pens(true).length,noAvg:box.querySelector('#nA').checked||box.querySelector('#nAb').checked,absentOnly:box.querySelector('#nAb').checked,active:true,rates:{}}}}),'Anlegen fehlgeschlagen')){closeDlg();toast('Strafe angelegt')}};
   });
 }
 
@@ -758,8 +760,8 @@ document.addEventListener('click',async e=>{
 });
 
 function defaultCfg(){
-  const P=[['mk','Mitgliedskegel vergessen',5,true],['p3','3. letzter Platz',.2],['p2','2. letzter Platz',.3],['p1','letzter Platz',.5],['lust','Lustwurf',2],['abw','Abwesenheit beim Wurf',2],['pudel','Pudel',.2],['glocke','Glöckchen',2],['kugel','Kugel an Tisch bringen',1],['pudelende','Spiel nur mit Pudel beenden',1],['ueber','Spieler übergehen',3],['druecken','Drücken vergessen',.5],['handy','Handyverbot',2],['bild','Bild',.5]];
-  const pen={};P.forEach(([id,name,price,noAvg],i)=>pen[id]={name,price,order:i,noAvg:!!noAvg,active:true});
+  const P=[['mk','Mitgliedskegel vergessen',5,true],['p3','3. letzter Platz',.2],['p2','2. letzter Platz',.3],['p1','letzter Platz',.5],['lust','Lustwurf',2],['abw','Abwesenheit beim Wurf',2],['pudel','Pudel',.2],['glocke','Glöckchen',2],['kugel','Kugel an Tisch bringen',1],['pudelende','Spiel nur mit Pudel beenden',1],['ueber','Spieler übergehen',3],['druecken','Drücken vergessen',.5],['handy','Handyverbot',2],['bild','Bild',.5],['spaet','Zu spät abgesagt',15,true,true]];
+  const pen={};P.forEach(([id,name,price,noAvg,absentOnly],i)=>pen[id]={name,price,order:i,noAvg:!!noAvg,active:true,...(absentOnly?{absentOnly:true}:{})});
   return {clubName:'Anrather Pegelkönige',contribAmount:5,factor:4,startBalance:0,startLabel:'Anfangsbestand',members:{},penalties:pen};
 }
 
@@ -863,7 +865,7 @@ function openRecon(){
 function openMult(closeAfter){
   const ev=getEv(ui.eid);if(!ev)return;const f=ev.factor||4;
   const base=evalEv({...ev,multPen:null}).sum;
-  const opts=pensFor(ev).map(p=>{const cnt=Object.values(ev.counts||{}).reduce((s,c)=>s+(c[p.id]||0),0);return {p,cnt,extra:r2(evalEv({...ev,multPen:p.id}).sum-base)}});
+  const opts=pensFor(ev).filter(p=>!p.absentOnly).map(p=>{const cnt=Object.values(ev.counts||{}).reduce((s,c)=>s+(c[p.id]||0),0);return {p,cnt,extra:r2(evalEv({...ev,multPen:p.id}).sum-base)}});
   dialog(`${closeAfter?`<h2>Abend abschließen</h2><div class="row" style="align-items:end">${trophyFields(ev,false,true)}</div>${laneFields(ev)}`:''}<h2>Strafe des Abends ×${f}</h2><p class="muted" style="margin:0">Alle Strafen sind erfasst? Wähle jetzt die Strafe, die ${f}-fach zählt. Rechts siehst du, um wie viel sich die Summe des Abends erhöht (Abwesende über den Durchschnitt eingerechnet).</p>
     <div style="display:grid;gap:6px;max-height:50vh;overflow:auto">${opts.map(o=>`<button class="pbtn ${ev.multPen===o.p.id?'sel':''}" data-m="${o.p.id}" style="font-size:16px;min-height:50px"><span>${esc(o.p.name)} <span class="muted small">· ${o.cnt}×</span></span><span class="amt num">+${eur(o.extra)}</span></button>`).join('')}</div>
     <div class="banner small">Summe ohne Strafe des Abends: <b class="num">${eur(base)}</b></div>
