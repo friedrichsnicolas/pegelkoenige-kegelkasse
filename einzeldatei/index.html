@@ -288,7 +288,7 @@ function ledger(){
 function cashFlow(){
   const E=[];
   for(const e of evList()){const s=Object.values(e.contrib||{}).reduce((a,b)=>a+(b||0),0);if(s)E.push({date:e.date,text:'Beiträge Abend '+dshort(e.date),inn:s,kind:'contrib'})}
-  for(const [id,p] of Object.entries(pays)){const t=(p.amount||0)+(p.donation||0);if(t)E.push({id,date:p.date,text:'Strafe '+p.name+(p.donation?` (davon ${eur(p.donation)} Spende)`:''),inn:t,kind:'pay'})}
+  for(const [id,p] of Object.entries(pays)){const t=(p.amount||0)+(p.donation||0);if(t)E.push({id,date:p.date,text:(p.kind==='advance'?'Gutschrift '+p.name+' (Bahn vorgestreckt)':'Strafe '+p.name)+(p.donation?` (davon ${eur(p.donation)} Spende)`:''),inn:t,kind:'pay'})}
   for(const [id,c] of Object.entries(cash)){E.push({id,date:c.date,text:c.reason||(c.type==='in'?'Einnahme':'Ausgabe'),inn:c.type==='in'?c.amount:0,out:c.type==='in'?0:c.amount,kind:'cash'})}
   E.sort((a,b)=>a.date.localeCompare(b.date)||(a.kind==='cash'?1:-1));
   let bal=cfg?.startBalance||0;for(const x of E){bal=r2(bal+(x.inn||0)-(x.out||0));x.bal=bal}
@@ -387,7 +387,7 @@ function trophyFields(ev,disabled,dlg){
 function renderUebersicht(){
   const ev=curEv();if(!ev)return noEvHtml();
   const x=evalEv(ev);const present=x.rows.filter(r=>r.present);
-  const paidToday=Object.values(pays).filter(p=>p.date===ev.date).reduce((s,p)=>s+(p.amount||0)+(p.donation||0),0);
+  const paidToday=Object.values(pays).filter(p=>p.date===ev.date&&p.kind!=='advance').reduce((s,p)=>s+(p.amount||0)+(p.donation||0),0);
   const contrib=Object.values(ev.contrib||{}).reduce((a,b)=>a+(b||0),0);
   const top=(f)=>present.slice().sort((a,b)=>f(b)-f(a))[0];
   const tp=top(r=>r.c.pudel||0),tw=top(r=>r.wins),tt=top(r=>r.total),tl=top(r=>r.c.p1||0);
@@ -488,7 +488,7 @@ function renderKasse(){
     </tbody></table></div></div>
     <div class="card"><h2 style="margin-bottom:8px">Kassenverlauf</h2><div class="chartbox"><canvas id="cashChart" aria-label="Kassenstand im Zeitverlauf" role="img"></canvas></div></div></div>
   <div class="card"><div class="row" style="margin-bottom:8px"><h2>Kassenbuch</h2><span class="spacer"></span>
-    <button class="btn" data-act="cash" data-type="out">+ Ausgabe</button><button class="btn" data-act="cash" data-type="in">+ Einnahme</button><button class="btn primary" data-act="pay">+ Zahlung</button></div>
+    <button class="btn" data-act="recon">Kassenstand abgleichen</button><button class="btn" data-act="cash" data-type="out">+ Ausgabe</button><button class="btn" data-act="cash" data-type="in">+ Einnahme</button><button class="btn primary" data-act="pay">+ Zahlung</button></div>
     <div class="tbl-wrap"><table><thead><tr><th>Datum</th><th>Vorgang</th><th class="r">Einnahme</th><th class="r">Ausgabe</th><th class="r">Stand</th><th></th></tr></thead><tbody>
     ${cf.entries.slice().reverse().map(e=>`<tr><td class="num">${dshort(e.date)}</td><td>${esc(e.text)}</td><td class="r num">${e.inn?eur(e.inn):''}</td><td class="r num">${e.out?eur(e.out):''}</td><td class="r num"><b>${eur(e.bal)}</b></td><td class="r">${e.kind!=='contrib'?`<button class="btn small danger" data-act="delentry" data-kind="${e.kind}" data-id="${e.id}" aria-label="Eintrag löschen">✕</button>`:''}</td></tr>`).join('')}
     <tr><td></td><td>${esc(cfg.startLabel||'Anfangsbestand')}</td><td></td><td></td><td class="r num"><b>${eur(cfg.startBalance||0)}</b></td><td></td></tr></tbody></table></div></div>`;
@@ -643,6 +643,7 @@ function renderSettings(){
     h+=`<div class="card"><h2 style="margin-bottom:10px">Allgemein</h2><div style="display:grid;gap:12px;max-width:560px">
     <label class="fld">Vereinsname<input class="inp" data-cfg="clubName" value="${esc(cfg.clubName||'')}"></label>
     <label class="fld">Beitrag pro Abend (€)<input class="inp narrow" inputmode="decimal" data-cfg="contribAmount" data-num value="${num(cfg.contribAmount||0)}"></label>
+    <label class="fld">Kegelbahn pro Abend, Vorschlag (€)<input class="inp narrow" inputmode="decimal" data-cfg="laneCost" data-num value="${num(cfg.laneCost??25)}"></label>
     <div class="row"><label class="fld">Anfangsbestand Kasse (€)<input class="inp" inputmode="decimal" data-cfg="startBalance" data-num value="${num(cfg.startBalance||0)}"></label>
     <label class="fld">Bezeichnung<input class="inp" data-cfg="startLabel" value="${esc(cfg.startLabel||'')}"></label></div></div></div>
     <div class="card"><h2 style="margin-bottom:6px">Datensicherung & Umzug</h2><p class="muted small" style="margin:0 0 10px">Sichert alle Abende, Zahlungen, Beiträge, Kassenbuch und Einstellungen als Text (JSON). Damit ziehst du die Daten auch in eine andere Version der App um.</p>
@@ -741,6 +742,7 @@ document.addEventListener('click',async e=>{
     case 'exportcopy':{const txt=JSON.stringify(exportData());try{await navigator.clipboard.writeText(txt);toast('Alle Daten kopiert ('+Math.round(txt.length/1024)+' KB)')}catch(e){dialog(`<h2>Daten</h2><p class="muted" style="margin:0">Alles markieren und kopieren:</p><textarea class="inp" style="width:100%;height:260px" readonly>${esc(txt)}</textarea><div class="row"><span class="spacer"></span><button class="btn" data-close>Schließen</button></div>`,b=>{const t=b.querySelector('textarea');t.focus();t.select()})}break}
     case 'exportdl':{const blob=new Blob([JSON.stringify(exportData(),null,1)],{type:'application/json'});const a2=document.createElement('a');a2.href=URL.createObjectURL(blob);a2.download='kegelkasse-backup-'+today()+'.json';document.body.appendChild(a2);a2.click();setTimeout(()=>{URL.revokeObjectURL(a2.href);a2.remove()},500);break}
     case 'importdlg':openImport();break;
+    case 'recon':openRecon();break;
     case 'wipedlg':openWipe();break;
     case 'logout':if(fbAuth)fbAuth.signOut();break;
     case 'fbsave':{const t=$('#fbConf').value;const o={};t.replace(/["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g,(m,k,v)=>{o[k]=v});
@@ -816,15 +818,49 @@ function openEditEv(){
     box.querySelector('#eDel').onclick=function(){if(this.dataset.sure){safe(async()=>{await db.doc('evenings/'+ev.id).delete();delete overlay[ev.id];delete pending[ev.id];ui.eid=null;closeDlg();render()},'Löschen fehlgeschlagen')}else{this.dataset.sure=1;this.textContent='Wirklich löschen? Nochmal tippen'}};
   });
 }
+function laneFields(ev){
+  const L=ev.lane||{};const amt=L.amount!=null?L.amount:(cfg.laneCost??25);
+  const mem=evalEv(ev).rows.filter(r=>r.present);
+  return `<h2>Kegelbahn</h2><div class="row" style="align-items:end"><label class="fld">Betrag (€)<input class="inp narrow" id="lnAmt" inputmode="decimal" value="${num(amt)}"></label>
+    <label class="fld">Bezahlt von<select class="inp" id="lnBy"><option value="">Kasse</option>${mem.map(r=>`<option value="${esc(r.pid)}" ${L.by===r.pid?'selected':''}>${esc(r.name)} (vorgestreckt)</option>`).join('')}</select></label></div>
+    <p class="muted small" style="margin:0">Streckt jemand vor, wird die Kasse belastet und der Betrag ihm als Guthaben gutgeschrieben – er wird mit seinen Strafen verrechnet.</p>`}
+function bookLane(ev,box){
+  const ai=box.querySelector('#lnAmt');if(!ai)return;
+  const amt=r2(parseNum(ai.value)||0),by=box.querySelector('#lnBy').value||null;
+  const pp=by?(ev.people?.[by]||{}):null;const nm=pp?.name||cfg.members?.[by]?.name||by;
+  patchEv(ev.id,{lane:{amount:amt,by}});
+  const cid='cashbook/bahn-'+ev.id,pidd='payments/bahn-'+ev.id;
+  if(amt>0)db.doc(cid).set({type:'out',reason:'Kegelbahn'+(by?' – vorgestreckt von '+nm:''),amount:amt,date:ev.date,lane:ev.id}).catch(()=>toast('Bahn-Buchung fehlgeschlagen'));
+  else if(cash['bahn-'+ev.id])db.doc(cid).delete().catch(()=>{});
+  if(amt>0&&by)db.doc(pidd).set({pid:by,name:nm,amount:amt,donation:0,date:ev.date,note:'Bahn vorgestreckt',kind:'advance',lane:ev.id}).catch(()=>toast('Gutschrift fehlgeschlagen'));
+  else if(pays['bahn-'+ev.id])db.doc(pidd).delete().catch(()=>{});
+}
+function openRecon(){
+  const cf=cashFlow();const soll=cf.balance;
+  dialog(`<h2>Kassenstand abgleichen</h2><p class="muted" style="margin:0">Zähle den tatsächlichen Bestand (Bargeld und ggf. Konto). Die App bucht die Differenz als Korrektur ins Kassenbuch.</p>
+    <div class="banner"><div class="sum-line"><span>Laut App</span><b class="num">${eur(soll)}</b></div></div>
+    <label class="fld">Tatsächlich gezählt (€)<input class="inp" id="rcAmt" inputmode="decimal"></label>
+    <label class="fld">Datum<input class="inp" type="date" id="rcDate" value="${today()}"></label>
+    <label class="fld">Vermerk<input class="inp" id="rcNote" value="Kassenabgleich – nicht erfasste Ausgaben/Einnahmen"></label>
+    <div class="banner small" id="rcRes">Betrag eingeben.</div>
+    <div class="row"><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" id="rcSave" disabled>Korrektur buchen</button></div>`,box=>{
+    const q=x=>box.querySelector(x);let d=0;
+    q('#rcAmt').oninput=()=>{const v=q('#rcAmt').value.trim();if(!v){q('#rcRes').textContent='Betrag eingeben.';q('#rcSave').disabled=true;return}
+      d=r2(parseNum(v)-soll);q('#rcRes').innerHTML=Math.abs(d)<0.005?'Stimmt genau – nichts zu buchen.':`Korrektur: <b class="num">${d<0?'Ausgabe '+eur(-d):'Einnahme '+eur(d)}</b>`;q('#rcSave').disabled=Math.abs(d)<0.005};
+    q('#rcSave').onclick=()=>{q('#rcSave').disabled=true;
+      db.doc('cashbook/abgl-'+Date.now()).set({type:d<0?'out':'in',reason:q('#rcNote').value.trim()||'Kassenabgleich',amount:Math.abs(d),date:q('#rcDate').value||today(),recon:true})
+        .then(()=>{closeDlg();toast('Kassenstand abgeglichen')}).catch(()=>{toast('Speichern fehlgeschlagen');q('#rcSave').disabled=false})};
+  });
+}
 function openMult(closeAfter){
   const ev=getEv(ui.eid);if(!ev)return;const f=ev.factor||4;
   const base=evalEv({...ev,multPen:null}).sum;
   const opts=pensFor(ev).map(p=>{const cnt=Object.values(ev.counts||{}).reduce((s,c)=>s+(c[p.id]||0),0);return {p,cnt,extra:r2(evalEv({...ev,multPen:p.id}).sum-base)}});
-  dialog(`${closeAfter?`<h2>Abend abschließen</h2><div class="row" style="align-items:end">${trophyFields(ev,false,true)}</div>`:''}<h2>Strafe des Abends ×${f}</h2><p class="muted" style="margin:0">Alle Strafen sind erfasst? Wähle jetzt die Strafe, die ${f}-fach zählt. Rechts siehst du, um wie viel sich die Summe des Abends erhöht (Abwesende über den Durchschnitt eingerechnet).</p>
+  dialog(`${closeAfter?`<h2>Abend abschließen</h2><div class="row" style="align-items:end">${trophyFields(ev,false,true)}</div>${laneFields(ev)}`:''}<h2>Strafe des Abends ×${f}</h2><p class="muted" style="margin:0">Alle Strafen sind erfasst? Wähle jetzt die Strafe, die ${f}-fach zählt. Rechts siehst du, um wie viel sich die Summe des Abends erhöht (Abwesende über den Durchschnitt eingerechnet).</p>
     <div style="display:grid;gap:6px;max-height:50vh;overflow:auto">${opts.map(o=>`<button class="pbtn ${ev.multPen===o.p.id?'sel':''}" data-m="${o.p.id}" style="font-size:16px;min-height:50px"><span>${esc(o.p.name)} <span class="muted small">· ${o.cnt}×</span></span><span class="amt num">+${eur(o.extra)}</span></button>`).join('')}</div>
     <div class="banner small">Summe ohne Strafe des Abends: <b class="num">${eur(base)}</b></div>
     <div class="row"><button class="btn" data-m="">Ohne Strafe des Abends</button><span class="spacer"></span><button class="btn" data-close>Abbrechen</button></div>`,box=>{
-    box.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const v=b.dataset.m||null;const tp={};box.querySelectorAll('[data-dtrophy]').forEach(sl=>tp[sl.dataset.dtrophy]=sl.value||null);patchEv(ev.id,closeAfter?{multPen:v,status:'closed',...tp}:{multPen:v});closeDlg();toast(closeAfter?'Abend abgeschlossen':'Strafe des Abends gespeichert');if(closeAfter){location.hash='uebersicht'}});
+    box.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const v=b.dataset.m||null;if(closeAfter)bookLane(ev,box);const tp={};box.querySelectorAll('[data-dtrophy]').forEach(sl=>tp[sl.dataset.dtrophy]=sl.value||null);patchEv(ev.id,closeAfter?{multPen:v,status:'closed',...tp}:{multPen:v});closeDlg();toast(closeAfter?'Abend abgeschlossen':'Strafe des Abends gespeichert');if(closeAfter){location.hash='uebersicht'}});
   });
 }
 function openOverride(pid){
