@@ -646,7 +646,7 @@ function renderSettings(){
     <div class="row"><label class="fld">Anfangsbestand Kasse (€)<input class="inp" inputmode="decimal" data-cfg="startBalance" data-num value="${num(cfg.startBalance||0)}"></label>
     <label class="fld">Bezeichnung<input class="inp" data-cfg="startLabel" value="${esc(cfg.startLabel||'')}"></label></div></div></div>
     <div class="card"><h2 style="margin-bottom:6px">Datensicherung & Umzug</h2><p class="muted small" style="margin:0 0 10px">Sichert alle Abende, Zahlungen, Beiträge, Kassenbuch und Einstellungen als Text (JSON). Damit ziehst du die Daten auch in eine andere Version der App um.</p>
-    <div class="row"><button class="btn" data-act="exportcopy">Alle Daten kopieren</button>${FB?'<button class="btn" data-act="exportdl">Backup herunterladen</button>':''}<button class="btn" data-act="importdlg">Daten importieren</button></div></div>`;
+    <div class="row"><button class="btn" data-act="exportcopy">Alle Daten kopieren</button>${FB?'<button class="btn" data-act="exportdl">Backup herunterladen</button>':''}<button class="btn" data-act="importdlg">Daten importieren</button><button class="btn danger" data-act="wipedlg">Alle Daten löschen</button></div></div>`;
   }
   return h;
 }
@@ -741,6 +741,7 @@ document.addEventListener('click',async e=>{
     case 'exportcopy':{const txt=JSON.stringify(exportData());try{await navigator.clipboard.writeText(txt);toast('Alle Daten kopiert ('+Math.round(txt.length/1024)+' KB)')}catch(e){dialog(`<h2>Daten</h2><p class="muted" style="margin:0">Alles markieren und kopieren:</p><textarea class="inp" style="width:100%;height:260px" readonly>${esc(txt)}</textarea><div class="row"><span class="spacer"></span><button class="btn" data-close>Schließen</button></div>`,b=>{const t=b.querySelector('textarea');t.focus();t.select()})}break}
     case 'exportdl':{const blob=new Blob([JSON.stringify(exportData(),null,1)],{type:'application/json'});const a2=document.createElement('a');a2.href=URL.createObjectURL(blob);a2.download='kegelkasse-backup-'+today()+'.json';document.body.appendChild(a2);a2.click();setTimeout(()=>{URL.revokeObjectURL(a2.href);a2.remove()},500);break}
     case 'importdlg':openImport();break;
+    case 'wipedlg':openWipe();break;
     case 'logout':if(fbAuth)fbAuth.signOut();break;
     case 'fbsave':{const t=$('#fbConf').value;const o={};t.replace(/["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g,(m,k,v)=>{o[k]=v});
       if(!o.apiKey||!o.projectId){toast('apiKey und projectId nicht gefunden');break}try{localStorage.setItem('kk-fb',JSON.stringify(o))}catch(e){}location.reload();break}
@@ -939,6 +940,25 @@ function openExport(){
 
 /* ---------- Datensicherung ---------- */
 function exportData(){return {app:'kegelkasse',format:1,exported:new Date().toISOString(),config:cfg,evenings:evs,payments:pays,cashbook:cash}}
+function openWipe(){
+  const n=Object.keys(evs).length,np=Object.keys(pays).length,nc=Object.keys(cash).length;
+  dialog(`<h2>Alle Daten löschen</h2><p class="muted" style="margin:0">Löscht auf <b>allen Geräten</b> endgültig: ${n} Abende, ${np} Zahlungen, ${nc} Kassenbuch-Einträge und die Einstellungen (Mitglieder, Strafenkatalog). Danach kannst du eine Sicherung neu importieren.</p>
+    <div class="banner small">Tipp: Erst ein Backup herunterladen – Löschen lässt sich nicht rückgängig machen.</div>
+    <div class="row"><button class="btn" data-act="exportdl">Backup herunterladen</button></div>
+    <label class="small muted">Zum Bestätigen <b>LÖSCHEN</b> eintippen</label><input class="inp" id="wpT" autocomplete="off">
+    <div class="banner small" id="wpInfo" hidden></div>
+    <div class="row"><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn danger" id="wpGo" disabled>Endgültig löschen</button></div>`,box=>{
+    const t=box.querySelector('#wpT'),go=box.querySelector('#wpGo'),info=box.querySelector('#wpInfo');
+    t.oninput=()=>{go.disabled=t.value.trim().toUpperCase()!=='LÖSCHEN'};
+    go.onclick=async()=>{go.disabled=true;t.disabled=true;info.hidden=false;
+      for(const k of Object.keys(timers)){clearTimeout(timers[k]);delete timers[k]}
+      for(const o of [pending,overlay])for(const k of Object.keys(o))delete o[k];
+      const jobs=[...Object.keys(evs).map(k=>'evenings/'+k),...Object.keys(pays).map(k=>'payments/'+k),...Object.keys(cash).map(k=>'cashbook/'+k),'config/main'];
+      let done=0,fail=0;
+      for(let i=0;i<jobs.length;i+=10){await Promise.all(jobs.slice(i,i+10).map(p=>db.doc(p).delete().then(()=>done++).catch(()=>fail++)));info.textContent=`Lösche … ${done+fail} / ${jobs.length}`}
+      closeDlg();toast(fail?`${done} gelöscht, ${fail} fehlgeschlagen`:`Alle Daten gelöscht (${done} Einträge)`)};
+  });
+}
 function openImport(){
   dialog(`<h2>Daten importieren</h2><p class="muted" style="margin:0">Datei wählen oder den kopierten Text einfügen. Einträge mit gleicher Kennung werden überschrieben, alles andere bleibt erhalten.</p>
     <input type="file" id="impF" accept=".json,application/json" class="inp">
