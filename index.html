@@ -410,7 +410,8 @@ function renderUebersicht(){
     <div class="kpi"><div class="l">Ø für Abwesende</div><div class="v num">${eur(x.avg)}</div></div>
     <div class="kpi"><div class="l">Strafe des Abends</div><div class="v" style="font-size:22px">${ev.multPen?esc(cfg.penalties[ev.multPen]?.name||ev.multPen)+' ×'+(ev.factor||4):'noch offen'}</div>${ev.status==='open'?`<button class="btn small" data-act="mult" style="margin-top:6px">${ev.multPen?'Ändern':'Auswählen'}</button>`:''}</div>
     <div class="kpi"><div class="l">Heute kassiert</div><div class="v num">${eur(paidToday)}</div></div>
-    <div class="kpi"><div class="l">Beiträge</div><div class="v num">${eur(contrib)}</div></div></div>
+    <div class="kpi"><div class="l">Beiträge</div><div class="v num">${eur(contrib)}</div></div>
+    ${(li=>`<div class="kpi"><div class="l">Kegelbahn</div><div class="v num">${li?eur(li.amount):'–'}</div><div class="muted small">${li?(li.by?'vorgestreckt von '+esc(li.name):'aus der Kasse'):'noch nicht erfasst'}</div><button class="btn small" data-act="lane" style="margin-top:6px">${li?'Ändern':'Erfassen'}</button></div>`)(laneInfo(ev))}</div>
   <div class="records">${rec('Pudel des Abends',tp,(tp?.c.pudel||0)+' Pudel')}${rec('Meiste Siege',tw,tw?.wins?tw.wins+' Siege':0)}${rec('Teuerster Spieler',tt,tt?.total?eur(tt.total):0)}${rec('Rote Laterne',tl,(tl?.c.p1||0)?(tl.c.p1)+'× Letzter':0)}</div>`;
   h+=`<div class="card"><h2 style="margin-bottom:8px">Pudelmedaille & Siegerpin</h2><div class="row" style="align-items:end">${trophyFields(ev,ev.status!=='open',false)}${ev.status!=='open'?'<span class="muted small">Zum Ändern den Abend wieder öffnen.</span>':''}</div></div>`;
   return h+renderMatrix(ev,x);
@@ -749,6 +750,7 @@ document.addEventListener('click',async e=>{
     case 'exportdl':{const blob=new Blob([JSON.stringify(exportData(),null,1)],{type:'application/json'});const a2=document.createElement('a');a2.href=URL.createObjectURL(blob);a2.download='kegelkasse-backup-'+today()+'.json';document.body.appendChild(a2);a2.click();setTimeout(()=>{URL.revokeObjectURL(a2.href);a2.remove()},500);break}
     case 'importdlg':openImport();break;
     case 'recon':openRecon();break;
+    case 'lane':openLane();break;
     case 'wipedlg':openWipe();break;
     case 'logout':if(fbAuth)fbAuth.signOut();break;
     case 'fbsave':{const t=$('#fbConf').value;const o={};t.replace(/["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g,(m,k,v)=>{o[k]=v});
@@ -825,11 +827,17 @@ function openEditEv(){
   });
 }
 function laneFields(ev){
-  const L=ev.lane||{};const amt=L.amount!=null?L.amount:(cfg.laneCost??25);
+  const li=laneInfo(ev);const L=li?{amount:li.amount,by:li.by}:(ev.lane||{});const amt=L.amount!=null?L.amount:(cfg.laneCost??25);
   const mem=evalEv(ev).rows.filter(r=>r.present);
   return `<h2>Kegelbahn</h2><div class="row" style="align-items:end"><label class="fld">Betrag (€)<input class="inp narrow" id="lnAmt" inputmode="decimal" value="${num(amt)}"></label>
     <label class="fld">Bezahlt von<select class="inp" id="lnBy"><option value="">Kasse</option>${mem.map(r=>`<option value="${esc(r.pid)}" ${L.by===r.pid?'selected':''}>${esc(r.name)} (vorgestreckt)</option>`).join('')}</select></label></div>
     <p class="muted small" style="margin:0">Streckt jemand vor, wird die Kasse belastet und der Betrag ihm als Guthaben gutgeschrieben – er wird mit seinen Strafen verrechnet.</p>`}
+function laneInfo(ev){const c=cash['bahn-'+ev.id];if(!c)return null;const by=pays['bahn-'+ev.id]?.pid||null;
+  return {amount:c.amount||0,by,name:by?(ev.people?.[by]?.name||cfg.members?.[by]?.name||pays['bahn-'+ev.id]?.name||by):''}}
+function openLane(){const ev=curEv();if(!ev)return;
+  dialog(`${laneFields(ev)}<div class="row"><span class="spacer"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" id="lnSave">Speichern</button></div>`,box=>{
+    box.querySelector('#lnSave').onclick=()=>{bookLane(ev,box);closeDlg();toast('Kegelbahn gebucht')}});
+}
 function bookLane(ev,box){
   const ai=box.querySelector('#lnAmt');if(!ai)return;
   const amt=r2(parseNum(ai.value)||0),by=box.querySelector('#lnBy').value||null;
@@ -949,6 +957,7 @@ function reportHtml(ev){
   <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px">${kpi('Summe',eur(x.sum),true)}${kpi('Anwesend',pres.length+' / '+x.rows.length)}${kpi('Ø Abwesende',eur(x.avg))}${kpi('Strafe ×'+(ev.factor||4),ev.multPen?esc(cfg.penalties[ev.multPen]?.name||ev.multPen):'–')}${kpi('Pudelmedaille',nm(ev.pudelMedal))}${kpi('Siegerpin',nm(ev.winnerPin))}</div>
   <table style="border-collapse:collapse;width:100%;border:2px solid ${L};border-radius:16px;overflow:hidden"><thead><tr style="background:${P}"><th style="${th};text-align:left;padding-left:14px">Name</th>${used.map(p=>`<th style="${th}${ev.multPen===p.id?';background:'+G+';color:'+BG:''}">${esc(p.name)}<br><span style="font-weight:500;font-size:16px;opacity:.8">${num(x.price(p.id))} €</span></th>`).join('')}<th style="${th}">Siege</th><th style="${th};text-align:right;padding-right:14px">Betrag</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr style="background:${P}"><td style="padding:9px 14px;font-size:24px;font-weight:700;color:${G}">Summe</td>${used.map(p=>`<td style="padding:9px 6px;font-size:22px;text-align:center;color:${M}">${x.rows.reduce((s,r)=>s+(r.c[p.id]||0),0)}</td>`).join('')}<td></td><td style="padding:9px 14px;font-size:27px;font-weight:700;text-align:right;color:${G}">${eur(x.sum)}</td></tr></tfoot></table>
+  ${(li=>li?`<div style="font-size:24px;color:${M}">Kegelbahn: ${eur(li.amount)} · ${li.by?'vorgestreckt von '+esc(li.name):'aus der Kasse'}</div>`:'')(laneInfo(ev))}
   ${ev.note?`<div style="font-size:24px;color:${M}">Notiz: ${esc(ev.note)}</div>`:''}
   <div style="margin-top:auto;display:flex;align-items:baseline;justify-content:space-between;border-top:2px solid ${L};padding-top:14px"><div style="font-family:Pegelkoenige,Georgia,serif;font-size:48px;color:${G}">Gut Holz!</div><div style="font-size:22px;color:${M}">Erstellt am ${new Date().toLocaleDateString('de-DE')} mit der Pegelkönige-Kegelkasse</div></div></div>`;
 }
