@@ -423,6 +423,7 @@ function renderMatrix(ev,x){
 
 function contribDue(ev,pid){const pp=ev.people?.[pid];if(!pp||pp.removed)return 0;
   if(pp.guest){if(!pp.present||ev.status==='cancelled'||ev.date<(cfg.guestContribFrom||''))return 0;return cfg.guestContrib??10}
+  const since=cfg.members?.[pid]?.since;if(since&&ev.date<since)return 0;
   return cfg.contribAmount||5}
 function contribAmt(ev,pid){return ev.people?.[pid]?.guest?(cfg.guestContrib??10):(cfg.contribAmount||5)}
 function openItems(){
@@ -516,9 +517,9 @@ function renderBeitraege(){
   const rowsP=[...M,...(ui.showGuests?GL:[])];
   for(const m of rowsP){
     let paid=0,soll=0;
-    h+=`<tr><td><b>${esc(m.name)}</b>${m.guest?'<span class="tag">Gast</span>':''}</td>`+EY.map(e=>{const v=e.contrib?.[m.id]||0;paid+=v;const pp=e.people?.[m.id];const listed=pp&&!pp.removed&&(!m.guest||pp.present);soll+=contribDue(e,m.id);
+    h+=`<tr><td><b>${esc(m.name)}</b>${m.guest?'<span class="tag">Gast</span>':''}</td>`+EY.map(e=>{const v=e.contrib?.[m.id]||0;const pp=e.people?.[m.id];const due=contribDue(e,m.id);const since=!m.guest&&cfg.members?.[m.id]?.since;const pre=since&&e.date<since;if(!pre)paid+=v;const listed=pp&&!pp.removed&&(!m.guest||pp.present);soll+=due;
       if(!listed&&!v)return `<td class="c muted">·</td>`;
-      return `<td class="c"><button class="cell ${v?'paid':''} ${e.status==='cancelled'?'cancel':''}" data-act="contrib" data-eid="${e.id}" data-pid="${m.id}" aria-label="${esc(m.name)} ${dshort(e.date)}">${v?num(v):''}</button></td>`}).join('');
+      return `<td class="c"><button class="cell ${v?'paid':''} ${e.status==='cancelled'||pre?'cancel':''}" ${pre?`title="vor Aufnahme (${dshort(since)}) – zählt nicht"`:''} data-act="contrib" data-eid="${e.id}" data-pid="${m.id}" aria-label="${esc(m.name)} ${dshort(e.date)}">${v?num(v):''}</button></td>`}).join('');
     const sal=r2(paid-soll);tot+=paid;
     h+=`<td class="r num">${eur(paid)}</td><td class="r num">${eur(soll)}</td><td class="r num ${sal<-0.004?'pos':sal>0.004?'neg':''}">${sal>0?'+':''}${eur(sal)}</td></tr>`;
   }
@@ -649,10 +650,10 @@ function renderSettings(){
   }
   if(st==='mitglieder'){
     const M=members(true);
-    h+=`<div class="card"><h2 style="margin-bottom:10px">Mitglieder</h2><table><thead><tr><th>Name</th><th class="c">Aktiv</th></tr></thead><tbody>
-    ${M.map(m=>`<tr><td><input class="inp" data-mem="${m.id}" data-f="name" value="${esc(m.name)}" aria-label="Name"></td><td class="c"><input type="checkbox" data-mem="${m.id}" data-f="active" ${m.active!==false?'checked':''} aria-label="aktiv"></td></tr>`).join('')}
+    h+=`<div class="card"><h2 style="margin-bottom:10px">Mitglieder</h2><table><thead><tr><th>Name</th><th>Mitglied seit</th><th class="c">Aktiv</th></tr></thead><tbody>
+    ${M.map(m=>`<tr><td><input class="inp" data-mem="${m.id}" data-f="name" value="${esc(m.name)}" aria-label="Name"></td><td><input class="inp" type="date" data-mem="${m.id}" data-f="since" value="${esc(m.since||'')}" aria-label="Mitglied seit"></td><td class="c"><input type="checkbox" data-mem="${m.id}" data-f="active" ${m.active!==false?'checked':''} aria-label="aktiv"></td></tr>`).join('')}
     </tbody></table><div class="row" style="margin-top:10px"><input class="inp" id="newMem" placeholder="Neues Mitglied"><button class="btn" data-act="addmem">Hinzufügen</button></div>
-    <p class="muted small">Inaktive Mitglieder erscheinen nicht mehr bei Anwesenheit und Beiträgen. Ihre Historie bleibt erhalten.</p></div>`;
+    <p class="muted small">Inaktive Mitglieder erscheinen nicht mehr bei Anwesenheit und Beiträgen. Ihre Historie bleibt erhalten. „Mitglied seit“: Beiträge werden erst ab diesem Datum verlangt (leer = immer).</p></div>`;
   }
   if(st==='allgemein'){
     h+=`<div class="card"><h2 style="margin-bottom:10px">Allgemein</h2><div style="display:grid;gap:12px;max-width:560px">
@@ -1007,6 +1008,7 @@ let migDone=false;
 function migrate(){
   if(migDone||!cfg||!cfg.penalties)return;migDone=true;
   if(!cfg.mig?.gcontrib2)db.doc('config/main').update({guestContrib:cfg.guestContrib??10,guestContribFrom:'',mig:{gcontrib:true,gcontrib2:true}}).catch(()=>{});
+  if(!cfg.mig?.mikeSince&&cfg.members?.mike&&!cfg.members.mike.since)db.doc('config/main').update({members:{mike:{since:'2026-06-29'}},mig:{mikeSince:true}}).catch(()=>{});
   if(cfg.mig?.spaet||cfg.penalties.spaet)return;
   const order=Math.max(-1,...Object.values(cfg.penalties).map(p=>p.order??0))+1;
   db.doc('config/main').update({penalties:{spaet:{name:'Zu spät abgesagt',price:15,order,noAvg:true,absentOnly:true,active:true,rates:{},from:today()}},mig:{spaet:true}}).catch(()=>{migDone=false});
