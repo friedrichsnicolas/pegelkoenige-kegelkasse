@@ -987,6 +987,13 @@ function openExport(){
 
 /* ---------- Datensicherung ---------- */
 function exportData(){return {app:'kegelkasse',format:1,exported:new Date().toISOString(),config:cfg,evenings:evs,payments:pays,cashbook:cash}}
+let migDone=false;
+function migrate(){
+  if(migDone||!cfg||!cfg.penalties)return;migDone=true;
+  if(cfg.mig?.spaet||cfg.penalties.spaet)return;
+  const order=Math.max(-1,...Object.values(cfg.penalties).map(p=>p.order??0))+1;
+  db.doc('config/main').update({penalties:{spaet:{name:'Zu spät abgesagt',price:15,order,noAvg:true,absentOnly:true,active:true,rates:{},from:today()}},mig:{spaet:true}}).catch(()=>{migDone=false});
+}
 function openWipe(){
   const n=Object.keys(evs).length,np=Object.keys(pays).length,nc=Object.keys(cash).length;
   dialog(`<h2>Alle Daten löschen</h2><p class="muted" style="margin:0">Löscht auf <b>allen Geräten</b> endgültig: ${n} Abende, ${np} Zahlungen, ${nc} Kassenbuch-Einträge und die Einstellungen (Mitglieder, Strafenkatalog). Danach kannst du eine Sicherung neu importieren.</p>
@@ -1113,7 +1120,7 @@ function subscribe(){
   clearTimeout(loadTimer);loadTimer=setTimeout(()=>{if(!confirmed){loadErr='Die Daten sind gerade nicht erreichbar. Angezeigte Werte können veraltet sein.';scheduleRender(true)}},10000);
   const onErr=e=>{loadErr='Verbindung unterbrochen ('+(e&&e.code||'Fehler')+'). Bitte Seite neu öffnen.';clearTimeout(loadTimer);scheduleRender(true)};
   const ok=s=>{if(!s.metadata.fromCache&&!confirmed){confirmed=true;loadErr='';clearTimeout(loadTimer)}};
-  db.doc('config/main').onSnapshot(s=>{cfg=s.exists?s.data():null;got.cfg=true;ok(s);scheduleRender()},onErr);
+  db.doc('config/main').onSnapshot(s=>{cfg=s.exists?s.data():null;got.cfg=true;ok(s);migrate();scheduleRender()},onErr);
   db.collection('evenings').onSnapshot(s=>{const n={};s.docs.forEach(d=>n[d.id]=d.data());evs=n;got.ev=true;ok(s);scheduleRender()},onErr);
   db.collection('payments').onSnapshot(s=>{const n={};s.docs.forEach(d=>n[d.id]=d.data());pays=n;got.pay=true;scheduleRender()},onErr);
   db.collection('cashbook').onSnapshot(s=>{const n={};s.docs.forEach(d=>n[d.id]=d.data());cash=n;got.cash=true;scheduleRender()},onErr);
