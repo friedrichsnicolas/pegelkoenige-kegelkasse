@@ -422,7 +422,7 @@ function renderMatrix(ev,x){
 }
 
 function contribDue(ev,pid){const pp=ev.people?.[pid];if(!pp||pp.removed)return 0;
-  if(pp.guest){if(!pp.present||ev.status==='cancelled'||ev.date<(cfg.guestContribFrom||'9999'))return 0;return cfg.guestContrib??10}
+  if(pp.guest){if(!pp.present||ev.status==='cancelled'||ev.date<(cfg.guestContribFrom||''))return 0;return cfg.guestContrib??10}
   return cfg.contribAmount||5}
 function contribAmt(ev,pid){return ev.people?.[pid]?.guest?(cfg.guestContrib??10):(cfg.contribAmount||5)}
 function openItems(){
@@ -658,7 +658,7 @@ function renderSettings(){
     h+=`<div class="card"><h2 style="margin-bottom:10px">Allgemein</h2><div style="display:grid;gap:12px;max-width:560px">
     <label class="fld">Vereinsname<input class="inp" data-cfg="clubName" value="${esc(cfg.clubName||'')}"></label>
     <label class="fld">Beitrag pro Abend (€)<input class="inp narrow" inputmode="decimal" data-cfg="contribAmount" data-num value="${num(cfg.contribAmount||0)}"></label>
-    <label class="fld">Beitrag Gäste pro Abend (€)<input class="inp narrow" inputmode="decimal" data-cfg="guestContrib" data-num value="${num(cfg.guestContrib??10)}"></label>
+    <div class="row"><label class="fld">Beitrag Gäste pro Abend (€)<input class="inp narrow" inputmode="decimal" data-cfg="guestContrib" data-num value="${num(cfg.guestContrib??10)}"></label><label class="fld">Gastbeiträge fällig ab (leer = alle Abende)<input class="inp" type="date" data-cfg="guestContribFrom" value="${esc(cfg.guestContribFrom||'')}"></label></div>
     <label class="fld">Kegelbahn pro Abend, Vorschlag (€)<input class="inp narrow" inputmode="decimal" data-cfg="laneCost" data-num value="${num(cfg.laneCost??25)}"></label>
     <div class="row"><label class="fld">Anfangsbestand Kasse (€)<input class="inp" inputmode="decimal" data-cfg="startBalance" data-num value="${num(cfg.startBalance||0)}"></label>
     <label class="fld">Bezeichnung<input class="inp" data-cfg="startLabel" value="${esc(cfg.startLabel||'')}"></label></div></div></div>
@@ -1006,7 +1006,7 @@ function exportData(){return {app:'kegelkasse',format:1,exported:new Date().toIS
 let migDone=false;
 function migrate(){
   if(migDone||!cfg||!cfg.penalties)return;migDone=true;
-  if(!cfg.mig?.gcontrib)db.doc('config/main').update({guestContrib:cfg.guestContrib??10,guestContribFrom:cfg.guestContribFrom||today(),mig:{gcontrib:true}}).catch(()=>{});
+  if(!cfg.mig?.gcontrib2)db.doc('config/main').update({guestContrib:cfg.guestContrib??10,guestContribFrom:'',mig:{gcontrib:true,gcontrib2:true}}).catch(()=>{});
   if(cfg.mig?.spaet||cfg.penalties.spaet)return;
   const order=Math.max(-1,...Object.values(cfg.penalties).map(p=>p.order??0))+1;
   db.doc('config/main').update({penalties:{spaet:{name:'Zu spät abgesagt',price:15,order,noAvg:true,absentOnly:true,active:true,rates:{},from:today()}},mig:{spaet:true}}).catch(()=>{migDone=false});
