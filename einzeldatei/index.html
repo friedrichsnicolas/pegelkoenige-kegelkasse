@@ -210,7 +210,7 @@ let db=null, cfg=null, evs={}, pays={}, cash={};
 const got={cfg:false,ev:false,pay:false,cash:false};
 let confirmed=false, loadErr='', noDb=false;
 const overlay={}, pending={}, inflight={}, timers={};
-const ui={tab:'eingabe',eid:null,sel:null,undo:[],year:null,showAll:false,last:'',flash:null};
+const ui={tab:'eingabe',eid:null,sel:null,undo:[],year:null,showAll:false,showGuests:false,last:'',flash:null};
 const charts=[];
 try{ui.eid=localStorage.getItem('kk-eid')||null}catch(e){}
 
@@ -435,15 +435,16 @@ function openItems(){
   }
   return out.sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
 }
+function guestHint(list,val){const n=list.length;if(!n)return '';const v=list.reduce((s,o)=>s+Math.max(0,val(o)),0);return `<p class="muted small" style="margin:8px 0 0">${n===1?'1 Gast':n+' Gäste'} ausgeblendet${v>0.004?` (offen ${eur(v)})`:''} – „Gäste anzeigen“ antippen.</p>`}
 function renderOffen(){
-  const it=openItems();const td=today();
+  const all=openItems();const td=today();const it=all.filter(o=>ui.showGuests||!o.guest),hidG=all.filter(o=>o.guest&&!ui.showGuests);
   const sS=it.reduce((s,o)=>s+Math.max(0,o.strafen),0),sB=it.reduce((s,o)=>s+o.beitr,0);
   let h=`<div class="kpis">
     <div class="kpi main"><div class="l">Offen gesamt</div><div class="v num">${eur(sS+sB)}</div></div>
     <div class="kpi"><div class="l">Offene Strafen</div><div class="v num">${eur(sS)}</div></div>
     <div class="kpi"><div class="l">Offene Beiträge bis ${dshort(td)}</div><div class="v num">${eur(sB)}</div></div>
     <div class="kpi"><div class="l">Personen mit offenem Betrag</div><div class="v num">${it.filter(o=>o.total>0.004).length}</div></div></div>
-  <div class="card"><div class="row" style="margin-bottom:8px"><h2>Wer schuldet was?</h2><span class="spacer"></span><button class="btn" data-act="copyopen">Liste kopieren</button></div>
+  <div class="card"><div class="row" style="margin-bottom:8px"><h2>Wer schuldet was?</h2><span class="spacer"></span><label class="row small muted"><input type="checkbox" data-guests ${ui.showGuests?'checked':''}> Gäste anzeigen</label><button class="btn" data-act="copyopen">Liste kopieren</button></div>
   <div class="tbl-wrap"><table><thead><tr><th>Name</th><th class="r">Offene Strafen</th><th class="r">Offene Beiträge</th><th>Abende ohne Beitrag</th><th class="r">Gesamt</th><th></th></tr></thead><tbody>
   ${it.map(o=>`<tr><td><b>${esc(o.name)}</b>${o.guest?'<span class="tag">Gast</span>':''}</td>
     <td class="r num ${o.strafen>0.004?'pos':o.strafen<-0.004?'neg':''}">${o.strafen<-0.004?'Guthaben '+eur(-o.strafen):eur(o.strafen)}</td>
@@ -452,7 +453,7 @@ function renderOffen(){
     <td class="r num"><b>${eur(o.total)}</b></td>
     <td class="r"><div class="row" style="flex-wrap:nowrap;justify-content:flex-end">${o.strafen>0.004?`<button class="btn small primary" data-act="pay" data-pid="${esc(o.pid)}">Strafe zahlen</button>`:''}${o.beitr>0.004?`<button class="btn small" data-act="paycontrib" data-pid="${esc(o.pid)}">Beiträge kassieren</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="6" class="muted">Niemand hat offene Beträge.</td></tr>'}
   <tr><td><b>Summe</b></td><td class="r num"><b>${eur(sS)}</b></td><td class="r num"><b>${eur(sB)}</b></td><td></td><td class="r num"><b>${eur(sS+sB)}</b></td><td></td></tr>
-  </tbody></table></div>
+  </tbody></table></div>${guestHint(hidG,o=>o.total)}
   <p class="muted small">Beiträge: ${eur(cfg.contribAmount||5)} für jeden Kegelabend bis heute, an dem die Person in der Liste stand (auch ausgefallene), abzüglich bereits gezahlter Beiträge. Strafen: alle Abende abzüglich Zahlungen. Der laufende Abend ist schon enthalten.</p></div>`;
   return h;
 }
@@ -475,7 +476,8 @@ function renderKasse(){
   const don=all.reduce((s,o)=>s+o.don,0);
   const contrib=cf.entries.filter(e=>e.kind==='contrib').reduce((s,e)=>s+e.inn,0);
   const outSum=cf.entries.reduce((s,e)=>s+(e.out||0),0);
-  const rows=all.filter(o=>ui.showAll?(!o.inactive||Math.abs(o.open)>0.004):Math.abs(o.open)>0.004).sort((a,b)=>b.open-a.open);
+  const rows0=all.filter(o=>ui.showAll?(!o.inactive||Math.abs(o.open)>0.004):Math.abs(o.open)>0.004).sort((a,b)=>b.open-a.open);
+  const rows=rows0.filter(o=>ui.showGuests||!o.guest),hidG=rows0.filter(o=>o.guest&&!ui.showGuests);
   let h=`<div class="kpis">
     <div class="kpi main"><div class="l">Kassenstand</div><div class="v num">${eur(cf.balance)}</div></div>
     <div class="kpi"><div class="l">Offene Strafen</div><div class="v num">${eur(openSum)}</div></div>
@@ -483,10 +485,10 @@ function renderKasse(){
     <div class="kpi"><div class="l">Beiträge eingenommen</div><div class="v num">${eur(contrib)}</div></div>
     <div class="kpi"><div class="l">Ausgaben</div><div class="v num">${eur(outSum)}</div></div></div>
   <div class="grid2"><div class="card"><div class="row" style="margin-bottom:8px"><h2>Offene Strafen</h2><span class="spacer"></span>
-    <label class="row small muted"><input type="checkbox" id="showAll" ${ui.showAll?'checked':''}> alle zeigen</label></div>
+    <label class="row small muted"><input type="checkbox" data-guests ${ui.showGuests?'checked':''}> Gäste anzeigen</label><label class="row small muted"><input type="checkbox" id="showAll" ${ui.showAll?'checked':''}> alle zeigen</label></div>
     <div class="tbl-wrap"><table><thead><tr><th>Name</th><th class="r">Strafen</th><th class="r">Bezahlt</th><th class="r">Offen</th><th></th></tr></thead><tbody>
     ${rows.map(o=>`<tr><td><b>${esc(o.name)}</b>${o.guest?'<span class="tag">Gast</span>':''}</td><td class="r num">${eur(o.charged)}</td><td class="r num">${eur(o.paid)}</td><td class="r num ${o.open>0.004?'pos':o.open<-0.004?'neg':''}">${o.open<-0.004?'Guthaben '+eur(-o.open):eur(o.open)}</td><td class="r"><button class="btn small primary" data-act="pay" data-pid="${esc(o.pid)}">Bezahlen</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">Alles bezahlt.</td></tr>'}
-    </tbody></table></div></div>
+    </tbody></table></div>${guestHint(hidG,o=>o.open)}</div>
     <div class="card"><h2 style="margin-bottom:8px">Kassenverlauf</h2><div class="chartbox"><canvas id="cashChart" aria-label="Kassenstand im Zeitverlauf" role="img"></canvas></div></div></div>
   <div class="card"><div class="row" style="margin-bottom:8px"><h2>Kassenbuch</h2><span class="spacer"></span>
     <button class="btn" data-act="recon">Kassenstand abgleichen</button><button class="btn" data-act="cash" data-type="out">+ Ausgabe</button><button class="btn" data-act="cash" data-type="in">+ Einnahme</button><button class="btn primary" data-act="pay">+ Zahlung</button></div>
@@ -698,6 +700,7 @@ document.addEventListener('change',async e=>{
   if(t.dataset.trophy){patchEv(ui.eid,{[t.dataset.trophy]:t.value||null});return}
   if(t.id==='multSel'){patchEv(ui.eid,{multPen:t.value||null});return}
   if(t.id==='showAll'){ui.showAll=t.checked;render();return}
+  if(t.dataset.guests!==undefined){ui.showGuests=t.checked;render();return}
   if(t.id==='yearSel'){ui.year=t.value;render();return}
   if(t.dataset.cfg){const v=t.dataset.num!==undefined?parseNum(t.value):t.value.trim();await safe(()=>db.doc('config/main').update({[t.dataset.cfg]:v}),'Speichern fehlgeschlagen');return}
   if(t.dataset.mem){const f=t.dataset.f;const v=f==='active'?t.checked:t.value.trim();if(f==='name'&&!v)return render();await safe(()=>db.doc('config/main').update({members:{[t.dataset.mem]:{[f]:v}}}),'Speichern fehlgeschlagen');return}
@@ -734,7 +737,7 @@ document.addEventListener('click',async e=>{
     case 'addmem':{const n=$('#newMem').value.trim();if(!n)break;let id=slug(n);if(cfg.members[id])id+='-'+Date.now().toString(36);
       await safe(()=>db.doc('config/main').update({members:{[id]:{name:n,active:true,order:members(true).length}}}),'Speichern fehlgeschlagen');break}
     case 'paycontrib':openContribPay(b.dataset.pid);break;
-    case 'copyopen':{const it=openItems().filter(o=>o.total>0.004);const txt=`Offene Beträge ${cfg.clubName||''} (Stand ${dshort(today())})\n`+it.map(o=>`${o.name}: ${eur(o.total)}`+(o.strafen>0.004&&o.beitr>0.004?` (Strafen ${eur(o.strafen)}, Beiträge ${eur(o.beitr)})`:o.beitr>0.004?' (Beiträge)':' (Strafen)')).join('\n');
+    case 'copyopen':{const it=openItems().filter(o=>o.total>0.004&&(ui.showGuests||!o.guest));const txt=`Offene Beträge ${cfg.clubName||''} (Stand ${dshort(today())})\n`+it.map(o=>`${o.name}: ${eur(o.total)}`+(o.strafen>0.004&&o.beitr>0.004?` (Strafen ${eur(o.strafen)}, Beiträge ${eur(o.beitr)})`:o.beitr>0.004?' (Beiträge)':' (Strafen)')).join('\n');
       try{await navigator.clipboard.writeText(txt);toast('Liste kopiert')}catch(e){dialog(`<h2>Liste</h2><textarea class="inp" style="width:100%;height:240px">${esc(txt)}</textarea><div class="row"><span class="spacer"></span><button class="btn" data-close>Schließen</button></div>`)}break}
     case 'settab':ui.set=b.dataset.k;render();break;
     case 'rate':openRate(b.dataset.pen);break;
